@@ -35,6 +35,9 @@ const state = {
   selectedDateKey: toDayKey(new Date()),
   calendarCursor: startOfMonth(new Date()),
   editingRecordId: null,
+  // Turno travado manualmente para o registro do Plantão via botão rápido.
+  // null = automático, calculado pelo horário atual (getShiftCategoryForTs).
+  manualShiftOverride: null,
   charts: { day: null, week: null, month: null },
   saveTimer: null,
   saveInFlight: false,
@@ -257,7 +260,9 @@ function getShiftCategoryForTs(ts) {
   return "noturno";
 }
 // Recalcula o preço de TODOS os registros de plantão de um dia (a contagem da
-// faixa depende da ordem cronológica dos atendimentos daquele dia).
+// faixa depende da ordem cronológica dos atendimentos daquele dia). Registros
+// marcados com plantaoManual mantêm o turno travado manualmente em vez de
+// recalcular pelo horário — mas ainda entram na contagem daquele turno.
 function recalcPlantaoPricingForDay(dayKey) {
   const records = getDayRecords(dayKey);
   if (!records.length) return;
@@ -266,7 +271,10 @@ function recalcPlantaoPricingForDay(dayKey) {
   const counters = { noturno: 0, m: 0, t: 0, reforco: 0 };
   for (const record of records) {
     if (record.type !== "plantao") continue;
-    const category = getShiftCategoryForTs(record.ts);
+    const category =
+      record.plantaoManual && SHIFT_PRICING[record.plantaoCategory]
+        ? record.plantaoCategory
+        : getShiftCategoryForTs(record.ts);
     counters[category] += 1;
     const cfg = SHIFT_PRICING[category];
     record.plantaoCategory = category;
@@ -281,10 +289,11 @@ function getTypeDisplayLabel(record) {
   return base;
 }
 // Preço que o botão de registro mostraria agora, simulando a inclusão do
-// próximo atendimento de plantão no dia selecionado.
+// próximo atendimento de plantão no dia selecionado. Respeita o turno
+// travado manualmente em "Plantão ativo no registro", se houver.
 function getPendingPlantaoPrice() {
   const now = Date.now();
-  const category = getShiftCategoryForTs(now);
+  const category = state.manualShiftOverride || getShiftCategoryForTs(now);
   const dayKey = toDayKey(new Date(now));
   const cfg = SHIFT_PRICING[category];
   const countSoFar = getDayRecords(dayKey).filter(
@@ -308,21 +317,27 @@ function getRecordPrice(record) { return Number(record.price) || 0; }
 // ── Dados do dia / registros ────────────────────────────────────────────────
 function getDayRecords(dayKey) { return state.data.days[dayKey] || []; }
 
-function addRecord(dayKey, ts, type, atestado, name) {
+// forcedShiftCategory (opcional): quando informado para um registro de
+// Plantão, trava o turno naquele valor (vindo do seletor "Plantão ativo no
+// registro") em vez de calculá-lo automaticamente pelo horário.
+function addRecord(dayKey, ts, type, atestado, name, forcedShiftCategory) {
   if (!state.data.days[dayKey]) state.data.days[dayKey] = [];
   const prices = getTypePrices();
+  const isPlantao = type === "plantao";
+  const category = isPlantao ? (forcedShiftCategory || getShiftCategoryForTs(ts)) : null;
   const record = {
     id: createId(),
     type,
     ts,
     atestado: atestado === true,
-    price: type === "plantao" ? 0 : prices[type] || 0,
-    plantaoCategory: type === "plantao" ? getShiftCategoryForTs(ts) : null,
+    price: isPlantao ? 0 : prices[type] || 0,
+    plantaoCategory: category,
+    plantaoManual: isPlantao ? Boolean(forcedShiftCategory) : false,
     name: typeof name === "string" ? name.trim().slice(0, 80) : "",
   };
   state.data.days[dayKey].push(record);
   markDayDirty(dayKey);
-  if (type === "plantao") recalcPlantaoPricingForDay(dayKey);
+  if (isPlantao) recalcPlantaoPricingForDay(dayKey);
   return record;
 }
 
@@ -588,6 +603,24 @@ function renderConsultTypeButtons() {
   }
 }
 
+// ── Seletor manual do turno ativo do Plantão ("Plantão ativo no registro") ──
+// Comportamento de grupo único (tipo rádio) usando checkboxes: marcar uma
+// desmarca as demais; desmarcar volta ao modo automático (por horário).
+function setupShiftOverride() {
+  const checks = document.querySelectorAll(".shift-override-check");
+  checks.forEach((check) => {
+    check.addEventListener("change", () => {
+      if (check.checked) {
+        checks.forEach((other) => { if (other !== check) other.checked = false; });
+        state.manualShiftOverride = check.dataset.shift;
+      } else {
+        state.manualShiftOverride = null;
+      }
+      renderConsultTypeButtons();
+    });
+  });
+}
+
 function registerConsult(type, atestado) {
   const dayKey = state.selectedDateKey;
   const now = new Date();
@@ -595,7 +628,8 @@ function registerConsult(type, atestado) {
   const ts = new Date(year, month - 1, day, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds()).getTime();
   const nameInput = document.getElementById("quick-patient-name");
   const name = nameInput ? nameInput.value : "";
-  addRecord(dayKey, ts, type, atestado === true, name);
+  const forcedCategory = type === "plantao" ? state.manualShiftOverride : null;
+  addRecord(dayKey, ts, type, atestado === true, name, forcedCategory);
   if (nameInput) nameInput.value = "";
   state.calendarCursor = startOfMonth(parseDayKey(dayKey));
   scheduleSave();
@@ -1034,6 +1068,7 @@ function saveEditedRecord() {
     atestado: newAtestado,
     price: newPrice,
     plantaoCategory: newType === "plantao" ? getShiftCategoryForTs(newTs) : null,
+    plantaoManual: false,
     name: typeof newName === "string" ? newName.trim().slice(0, 80) : "",
   });
   markDayDirty(newDayKey);
@@ -1292,6 +1327,7 @@ async function initApp() {
   setupStopwatch();
   setupTimelineNav();
   setupDayListToggle();
+  setupShiftOverride();
   bindEvents();
   if (!(await tryRestoreSession())) showAuthScreen();
 }
