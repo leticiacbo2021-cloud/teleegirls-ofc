@@ -385,6 +385,11 @@ h1 { margin: 0.2rem 0 0.4rem; font-size: clamp(1.5rem, 2.2vw, 2rem); }
   accent-color: var(--accent);
   cursor: pointer;
 }
+.shift-override-hint {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
 
 button { font: inherit; border: 0; border-radius: 10px; padding: 0.7rem 0.9rem; cursor: pointer; transition: transform 0.15s ease, filter 0.15s ease; }
 button:hover { transform: translateY(-1px); filter: brightness(1.03); }
@@ -476,6 +481,41 @@ button:active { transform: translateY(1px); }
 .month-goal-grid { display: grid; gap: 0.55rem; grid-template-columns: repeat(3, 1fr); }
 .month-goal-card { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 12px; padding: 0.55rem 0.65rem; }
 
+.schedule-view-toggle { display: flex; gap: 0.4rem; }
+.schedule-view-btn { padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.85rem; }
+.schedule-view-btn.active { background: var(--accent-solid); color: var(--on-brand); border-color: var(--accent-solid); }
+
+.schedule-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin: 0.6rem 0 0.5rem; }
+.schedule-nav h3 { margin: 0; font-size: 1.02rem; }
+
+.schedule-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.35rem; }
+.schedule-day-cell {
+  min-height: 96px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-soft);
+  padding: 0.4rem; text-align: left; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.78rem; overflow: hidden;
+}
+.schedule-day-cell.other-month { opacity: 0.4; }
+.schedule-day-cell.today { outline: 2px dashed #f97316; outline-offset: 1px; }
+.schedule-day-cell.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.schedule-day-head { display: flex; align-items: baseline; justify-content: space-between; }
+.schedule-weekday { color: var(--muted); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.03em; }
+.schedule-daynum { font-weight: 700; }
+.schedule-date-sub { color: var(--muted); font-size: 0.68rem; }
+.schedule-tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.15rem; }
+.schedule-shift-tag {
+  font-size: 0.68rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 999px; color: var(--on-brand);
+}
+.schedule-shift-tag.m { background: var(--adulto); }
+.schedule-shift-tag.t { background: var(--pediatria); }
+.schedule-shift-tag.reforco { background: var(--one); }
+.schedule-shift-tag.noturno { background: var(--plantao); }
+.schedule-empty-label { color: var(--muted); font-size: 0.7rem; }
+
+.schedule-detail { margin-top: 0.9rem; border-top: 1px solid var(--border); padding-top: 0.8rem; }
+.schedule-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+.schedule-detail-head strong { font-size: 0.98rem; }
+.schedule-detail-list { list-style: none; margin: 0 0 0.5rem; padding: 0; display: grid; gap: 0.35rem; }
+.schedule-detail-list li { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; }
+
 .modal-overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; justify-content: center; align-items: center; z-index: 12; padding: 1rem; }
 .modal-overlay.hidden { display: none; }
 .modal-card { width: min(680px, 100%); border-radius: 16px; border: 1px solid var(--border); background: var(--surface-solid); padding: 1rem; box-shadow: var(--shadow); }
@@ -523,4 +563,5 @@ input, select, textarea { color: var(--text); }
   .metrics-grid { grid-template-columns: 1fr 1fr; }
   .manual-form, .type-prices-form { grid-template-columns: 1fr; }
   .month-goal-grid { grid-template-columns: 1fr; }
+  .schedule-day-cell { min-height: 70px; font-size: 0.7rem; padding: 0.3rem; }
 }
