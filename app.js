@@ -27,6 +27,37 @@ const SHIFT_PRICING = {
   t: { label: "T", startMin: 13 * 60, endMin: 19 * 60, threshold: 30, initial: 20, extra: 15 },
   reforco: { label: "Reforço", startMin: 19 * 60, endMin: 24 * 60, threshold: 25, initial: 20, extra: 15 },
 };
+// Ordem de exibição dos turnos na Escala de plantões (independe da ordem de SHIFT_PRICING).
+const SCHEDULE_SHIFT_ORDER = ["m", "t", "reforco", "noturno"];
+
+// Modo combinado M+T: quando os dois turnos estão marcados juntos no seletor
+// "Plantão ativo no registro", os atendimentos de M e T do dia compartilham
+// um único limite (60) em vez de 30 cada um separadamente.
+const MT_COMBO_PRICING = { label: "M+T", threshold: 60, initial: 20, extra: 15 };
+function getPricingConfigForGroup(group) {
+  return group === "mt" ? MT_COMBO_PRICING : SHIFT_PRICING[group];
+}
+// Decide o turno de exibição (category) e o "grupo de preço" (pricingGroup)
+// de um atendimento de plantão, considerando o turno travado manualmente
+// no momento do registro (forcedShiftCategory: "m" | "t" | "mt" | "reforco" | "noturno" | null).
+function resolvePlantaoAssignment(ts, forcedShiftCategory) {
+  const autoCategory = getShiftCategoryForTs(ts);
+  if (!forcedShiftCategory) {
+    return { category: autoCategory, pricingGroup: autoCategory, manual: false };
+  }
+  if (forcedShiftCategory === "mt") {
+    if (autoCategory === "m" || autoCategory === "t") {
+      return { category: autoCategory, pricingGroup: "mt", manual: true };
+    }
+    // Fora da janela 07:00–19:00 (ex.: registro manual em outro horário com M+T ainda
+    // marcados): ignora a combinação e usa o turno normal pelo horário.
+    return { category: autoCategory, pricingGroup: autoCategory, manual: false };
+  }
+  if (SHIFT_PRICING[forcedShiftCategory]) {
+    return { category: forcedShiftCategory, pricingGroup: forcedShiftCategory, manual: true };
+  }
+  return { category: autoCategory, pricingGroup: autoCategory, manual: false };
+}
 
 // ── Estado ──────────────────────────────────────────────────────────────────
 const state = {
@@ -38,6 +69,10 @@ const state = {
   // Turno travado manualmente para o registro do Plantão via botão rápido.
   // null = automático, calculado pelo horário atual (getShiftCategoryForTs).
   manualShiftOverride: null,
+  // Escala de plantões: visão de calendário dedicada aos turnos de Plantão.
+  scheduleView: "month", // "month" | "week"
+  scheduleCursor: startOfMonth(new Date()),
+  scheduleSelectedDayKey: null,
   charts: { day: null, week: null, month: null },
   saveTimer: null,
   saveInFlight: false,
@@ -90,6 +125,12 @@ function toTimeInputValue(ts) {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 function startOfMonth(date) { return new Date(date.getFullYear(), date.getMonth(), 1); }
+function startOfWeek(date) {
+  const offset = (date.getDay() + 6) % 7; // semana começa na segunda
+  const start = new Date(date);
+  start.setDate(date.getDate() - offset);
+  return start;
+}
 function formatCurrency(v) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -268,17 +309,29 @@ function recalcPlantaoPricingForDay(dayKey) {
   if (!records.length) return;
   markDayDirty(dayKey);
   records.sort((a, b) => a.ts - b.ts);
-  const counters = { noturno: 0, m: 0, t: 0, reforco: 0 };
+  // "mt" é um contador à parte: atendimentos de M e T registrados em modo
+  // combinado caem nele em vez de em "m"/"t" separadamente.
+  const counters = { noturno: 0, m: 0, t: 0, reforco: 0, mt: 0 };
   for (const record of records) {
     if (record.type !== "plantao") continue;
-    const category =
-      record.plantaoManual && SHIFT_PRICING[record.plantaoCategory]
-        ? record.plantaoCategory
-        : getShiftCategoryForTs(record.ts);
-    counters[category] += 1;
-    const cfg = SHIFT_PRICING[category];
+    const autoCategory = getShiftCategoryForTs(record.ts);
+    let category;
+    let group;
+    if (record.plantaoManual && record.plantaoPricingGroup === "mt") {
+      category = autoCategory;
+      group = "mt";
+    } else if (record.plantaoManual && SHIFT_PRICING[record.plantaoPricingGroup]) {
+      category = record.plantaoPricingGroup;
+      group = record.plantaoPricingGroup;
+    } else {
+      category = autoCategory;
+      group = autoCategory;
+    }
+    counters[group] += 1;
+    const cfg = getPricingConfigForGroup(group);
     record.plantaoCategory = category;
-    record.price = counters[category] <= cfg.threshold ? cfg.initial : cfg.extra;
+    record.plantaoPricingGroup = group;
+    record.price = counters[group] <= cfg.threshold ? cfg.initial : cfg.extra;
   }
 }
 function getTypeDisplayLabel(record) {
@@ -290,17 +343,26 @@ function getTypeDisplayLabel(record) {
 }
 // Preço que o botão de registro mostraria agora, simulando a inclusão do
 // próximo atendimento de plantão no dia selecionado. Respeita o turno
-// travado manualmente em "Plantão ativo no registro", se houver.
+// travado manualmente em "Plantão ativo no registro" (inclusive o modo
+// combinado M+T), se houver.
 function getPendingPlantaoPrice() {
   const now = Date.now();
-  const category = state.manualShiftOverride || getShiftCategoryForTs(now);
   const dayKey = toDayKey(new Date(now));
-  const cfg = SHIFT_PRICING[category];
+  const autoCategory = getShiftCategoryForTs(now);
+  let category = autoCategory;
+  let group = autoCategory;
+  if (state.manualShiftOverride === "mt" && (autoCategory === "m" || autoCategory === "t")) {
+    group = "mt";
+  } else if (state.manualShiftOverride && SHIFT_PRICING[state.manualShiftOverride]) {
+    category = state.manualShiftOverride;
+    group = state.manualShiftOverride;
+  }
+  const cfg = getPricingConfigForGroup(group);
   const countSoFar = getDayRecords(dayKey).filter(
-    (r) => r.type === "plantao" && r.plantaoCategory === category
+    (r) => r.type === "plantao" && r.plantaoPricingGroup === group
   ).length;
   const nextIndex = countSoFar + 1;
-  return { category, price: nextIndex <= cfg.threshold ? cfg.initial : cfg.extra };
+  return { category, group, price: nextIndex <= cfg.threshold ? cfg.initial : cfg.extra };
 }
 
 // ── Preços dos demais tipos ─────────────────────────────────────────────────
@@ -324,15 +386,16 @@ function addRecord(dayKey, ts, type, atestado, name, forcedShiftCategory) {
   if (!state.data.days[dayKey]) state.data.days[dayKey] = [];
   const prices = getTypePrices();
   const isPlantao = type === "plantao";
-  const category = isPlantao ? (forcedShiftCategory || getShiftCategoryForTs(ts)) : null;
+  const assignment = isPlantao ? resolvePlantaoAssignment(ts, forcedShiftCategory) : null;
   const record = {
     id: createId(),
     type,
     ts,
     atestado: atestado === true,
     price: isPlantao ? 0 : prices[type] || 0,
-    plantaoCategory: category,
-    plantaoManual: isPlantao ? Boolean(forcedShiftCategory) : false,
+    plantaoCategory: isPlantao ? assignment.category : null,
+    plantaoPricingGroup: isPlantao ? assignment.pricingGroup : null,
+    plantaoManual: isPlantao ? assignment.manual : false,
     name: typeof name === "string" ? name.trim().slice(0, 80) : "",
   };
   state.data.days[dayKey].push(record);
@@ -405,6 +468,22 @@ function computeMonthMetrics(monthKey) {
 }
 
 function getMonthRevenue(monthKey) { return computeMonthMetrics(monthKey).revenue; }
+
+// Resumo dos atendimentos de Plantão de um dia, agrupados por turno (M/T/Reforço/Noturno).
+// Usado pela Escala de plantões — não afeta o cálculo de preço, só exibe o que já está salvo.
+function computeDayPlantaoBreakdown(dayKey) {
+  const breakdown = {};
+  for (const key of Object.keys(SHIFT_PRICING)) breakdown[key] = { count: 0, revenue: 0 };
+  const records = getDayRecords(dayKey).filter((r) => r.type === "plantao");
+  for (const r of records) {
+    const cat = r.plantaoCategory && SHIFT_PRICING[r.plantaoCategory] ? r.plantaoCategory : getShiftCategoryForTs(r.ts);
+    breakdown[cat].count += 1;
+    breakdown[cat].revenue += getRecordPrice(r);
+  }
+  const total = records.length;
+  const revenue = records.reduce((s, r) => s + getRecordPrice(r), 0);
+  return { breakdown, total, revenue };
+}
 
 // Todos os registros de um mês, ordenados cronologicamente.
 function getMonthRecords(monthKey) {
@@ -578,8 +657,9 @@ function renderConsultTypeButtons() {
     const header = document.createElement("div");
     header.className = `type-card-header ${type}`;
     if (type === "plantao") {
-      const { category, price } = getPendingPlantaoPrice();
-      header.textContent = `Plantão ${SHIFT_PRICING[category].label} (+${formatCurrency(price)})`;
+      const { category, group, price } = getPendingPlantaoPrice();
+      const shiftLabel = group === "mt" ? `M+T (${SHIFT_PRICING[category].label})` : SHIFT_PRICING[category].label;
+      header.textContent = `Plantão ${shiftLabel} (+${formatCurrency(price)})`;
     } else {
       header.textContent = `${TYPE_META[type].label} (+${formatCurrency(prices[type])})`;
     }
@@ -604,18 +684,30 @@ function renderConsultTypeButtons() {
 }
 
 // ── Seletor manual do turno ativo do Plantão ("Plantão ativo no registro") ──
-// Comportamento de grupo único (tipo rádio) usando checkboxes: marcar uma
-// desmarca as demais; desmarcar volta ao modo automático (por horário).
+// M e T podem ficar marcados ao mesmo tempo (modo combinado M+T, com limite
+// compartilhado de 60). Reforço e Noturno continuam exclusivos: marcar um
+// deles desmarca todos os outros, e marcar M ou T desmarca Reforço/Noturno.
+// Desmarcar tudo volta ao modo automático (turno decidido pelo horário).
 function setupShiftOverride() {
   const checks = document.querySelectorAll(".shift-override-check");
   checks.forEach((check) => {
     check.addEventListener("change", () => {
+      const shift = check.dataset.shift;
       if (check.checked) {
-        checks.forEach((other) => { if (other !== check) other.checked = false; });
-        state.manualShiftOverride = check.dataset.shift;
-      } else {
-        state.manualShiftOverride = null;
+        if (shift === "reforco" || shift === "noturno") {
+          checks.forEach((other) => { if (other !== check) other.checked = false; });
+        } else {
+          checks.forEach((other) => {
+            if (other !== check && (other.dataset.shift === "reforco" || other.dataset.shift === "noturno")) {
+              other.checked = false;
+            }
+          });
+        }
       }
+      const checked = [...checks].filter((c) => c.checked).map((c) => c.dataset.shift);
+      if (checked.length === 0) state.manualShiftOverride = null;
+      else if (checked.includes("m") && checked.includes("t")) state.manualShiftOverride = "mt";
+      else state.manualShiftOverride = checked[0];
       renderConsultTypeButtons();
     });
   });
@@ -760,6 +852,151 @@ function renderCalendar() {
     });
     grid.appendChild(btn);
   }
+}
+
+// ── Escala de plantões (visão dedicada por semana/mês) ──────────────────────
+function renderScheduleGrid() {
+  const grid = document.getElementById("schedule-grid");
+  const titleEl = document.getElementById("schedule-title");
+  if (!grid || !titleEl) return;
+  grid.innerHTML = "";
+
+  let start;
+  let numCells;
+  if (state.scheduleView === "week") {
+    start = startOfWeek(state.scheduleCursor);
+    numCells = 7;
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    const fmt = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+    titleEl.textContent = `${fmt(start)} – ${fmt(end)}`;
+  } else {
+    const cursor = state.scheduleCursor;
+    const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    start = startOfWeek(first);
+    numCells = 42;
+    const title = first.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    titleEl.textContent = title.charAt(0).toUpperCase() + title.slice(1);
+  }
+
+  for (let i = 0; i < numCells; i += 1) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + i);
+    const key = toDayKey(date);
+    const { breakdown, total } = computeDayPlantaoBreakdown(key);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "schedule-day-cell";
+    if (state.scheduleView === "month" && date.getMonth() !== state.scheduleCursor.getMonth()) btn.classList.add("other-month");
+    if (key === toDayKey(new Date())) btn.classList.add("today");
+    if (key === state.scheduleSelectedDayKey) btn.classList.add("selected");
+
+    const weekdayLabel = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "").toUpperCase();
+    let tagsHtml;
+    if (total > 0) {
+      tagsHtml = SCHEDULE_SHIFT_ORDER
+        .filter((cat) => breakdown[cat].count > 0)
+        .map((cat) => `<span class="schedule-shift-tag ${cat}">${SHIFT_PRICING[cat].label} ${breakdown[cat].count}</span>`)
+        .join("");
+    } else {
+      tagsHtml = `<span class="schedule-empty-label">Sem plantão.</span>`;
+    }
+
+    btn.innerHTML = `
+      <span class="schedule-day-head">
+        <span class="schedule-weekday">${weekdayLabel}</span>
+        <span class="schedule-daynum">${date.getDate()}</span>
+      </span>
+      <span class="schedule-date-sub">${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}</span>
+      <span class="schedule-tags">${tagsHtml}</span>
+    `;
+    btn.addEventListener("click", () => {
+      state.scheduleSelectedDayKey = key;
+      renderScheduleGrid();
+      renderScheduleDetail();
+    });
+    grid.appendChild(btn);
+  }
+}
+
+function renderScheduleDetail() {
+  const box = document.getElementById("schedule-detail");
+  if (!box) return;
+  const key = state.scheduleSelectedDayKey;
+  if (!key) {
+    box.innerHTML = `<p class="metric-hint">Clique em um dia para ver o detalhe da escala.</p>`;
+    return;
+  }
+  const { breakdown, total, revenue } = computeDayPlantaoBreakdown(key);
+  let body;
+  if (total === 0) {
+    body = `<p class="metric-hint">Sem plantões registrados neste dia.</p>`;
+  } else {
+    const rows = SCHEDULE_SHIFT_ORDER
+      .filter((cat) => breakdown[cat].count > 0)
+      .map(
+        (cat) =>
+          `<li><span class="tag plantao">${SHIFT_PRICING[cat].label}</span> ${breakdown[cat].count} atendimento${breakdown[cat].count > 1 ? "s" : ""} · ${formatCurrency(breakdown[cat].revenue)}</li>`
+      )
+      .join("");
+    body = `
+      <ul class="schedule-detail-list">${rows}</ul>
+      <p class="metric-hint">Total do dia: ${total} plantão${total > 1 ? "ões" : ""} · ${formatCurrency(revenue)}</p>
+    `;
+  }
+  box.innerHTML = `
+    <div class="schedule-detail-head">
+      <strong>${formatDateLong(key)}</strong>
+      <button id="schedule-goto-day" class="ghost" type="button">Ver/editar este dia</button>
+    </div>
+    ${body}
+  `;
+  const gotoBtn = document.getElementById("schedule-goto-day");
+  if (gotoBtn) {
+    gotoBtn.addEventListener("click", () => {
+      state.selectedDateKey = key;
+      state.calendarCursor = startOfMonth(parseDayKey(key));
+      renderAll();
+      document.querySelector(".actions.card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+}
+
+function renderSchedule() {
+  renderScheduleGrid();
+  renderScheduleDetail();
+}
+
+function setupScheduleControls() {
+  document.getElementById("schedule-prev").addEventListener("click", () => {
+    state.scheduleCursor =
+      state.scheduleView === "week"
+        ? new Date(state.scheduleCursor.getFullYear(), state.scheduleCursor.getMonth(), state.scheduleCursor.getDate() - 7)
+        : new Date(state.scheduleCursor.getFullYear(), state.scheduleCursor.getMonth() - 1, 1);
+    renderScheduleGrid();
+  });
+  document.getElementById("schedule-next").addEventListener("click", () => {
+    state.scheduleCursor =
+      state.scheduleView === "week"
+        ? new Date(state.scheduleCursor.getFullYear(), state.scheduleCursor.getMonth(), state.scheduleCursor.getDate() + 7)
+        : new Date(state.scheduleCursor.getFullYear(), state.scheduleCursor.getMonth() + 1, 1);
+    renderScheduleGrid();
+  });
+  const weekBtn = document.getElementById("schedule-view-week");
+  const monthBtn = document.getElementById("schedule-view-month");
+  weekBtn.addEventListener("click", () => {
+    state.scheduleView = "week";
+    weekBtn.classList.add("active");
+    monthBtn.classList.remove("active");
+    renderScheduleGrid();
+  });
+  monthBtn.addEventListener("click", () => {
+    state.scheduleView = "month";
+    monthBtn.classList.add("active");
+    weekBtn.classList.remove("active");
+    renderScheduleGrid();
+  });
 }
 
 // ── Linha do tempo do dia ────────────────────────────────────────────────────
@@ -1013,6 +1250,7 @@ function renderAll() {
   renderDayList(metrics.records);
   renderCalendar();
   renderMonthGoal();
+  renderSchedule();
   renderCharts(metrics);
   const prices = getTypePrices();
   document.getElementById("price-adulto").value = String(prices.adulto);
@@ -1068,6 +1306,7 @@ function saveEditedRecord() {
     atestado: newAtestado,
     price: newPrice,
     plantaoCategory: newType === "plantao" ? getShiftCategoryForTs(newTs) : null,
+    plantaoPricingGroup: newType === "plantao" ? getShiftCategoryForTs(newTs) : null,
     plantaoManual: false,
     name: typeof newName === "string" ? newName.trim().slice(0, 80) : "",
   });
@@ -1328,6 +1567,7 @@ async function initApp() {
   setupTimelineNav();
   setupDayListToggle();
   setupShiftOverride();
+  setupScheduleControls();
   bindEvents();
   if (!(await tryRestoreSession())) showAuthScreen();
 }
