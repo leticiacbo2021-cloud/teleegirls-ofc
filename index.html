@@ -153,6 +153,7 @@
           <label><input type="checkbox" class="shift-override-check" data-shift="t" /> T</label>
           <label><input type="checkbox" class="shift-override-check" data-shift="reforco" /> Reforço</label>
           <label><input type="checkbox" class="shift-override-check" data-shift="noturno" /> Noturno</label>
+          <span class="shift-override-hint">Marque M e T juntos para compartilhar o limite de 60 (07:00–19:00)</span>
         </fieldset>
 
         <div class="action-row">
@@ -181,11 +182,12 @@
         <details class="price-settings-box">
           <summary>Ver faixas de preço do Plantão</summary>
           <div class="plantao-help">
-            <p><strong>M</strong> (07:00–13:00): 30 primeiros por R$ 20, depois R$ 15.</p>
-            <p><strong>T</strong> (13:00–19:00): 30 primeiros por R$ 20, depois R$ 15.</p>
+            <p><strong>M</strong> (07:00–13:00): se estiver sozinho, 30 primeiros por R$ 20, depois R$ 15.</p>
+            <p><strong>T</strong> (13:00–19:00): se estiver sozinho, 30 primeiros por R$ 20, depois R$ 15.</p>
+            <p><strong>M + T</strong>: se os dois estiverem marcados juntos, compartilham 60 atendimentos por R$ 20 entre 07:00 e 19:00; depois R$ 15.</p>
             <p><strong>Reforço</strong> (19:00–00:00): 25 primeiros por R$ 20, depois R$ 15.</p>
             <p><strong>Noturno</strong> (00:00–07:00): 25 primeiros por R$ 28, depois R$ 15.</p>
-            <p class="metric-hint">A contagem de cada faixa reinicia todo dia. Use o seletor "Plantão ativo no registro" acima para travar manualmente o turno, se necessário.</p>
+            <p class="metric-hint">A contagem de cada faixa reinicia todo dia. Use o seletor "Plantão ativo no registro" acima para travar manualmente o turno.</p>
           </div>
         </details>
         <details class="price-settings-box">
@@ -303,6 +305,28 @@
             </div>
           </section>
         </article>
+      </section>
+
+      <section class="card schedule-card">
+        <div class="card-head">
+          <h2>Escala de plantões</h2>
+          <div class="schedule-view-toggle">
+            <button id="schedule-view-week" class="ghost schedule-view-btn" type="button">Semana</button>
+            <button id="schedule-view-month" class="ghost schedule-view-btn active" type="button">Mês</button>
+          </div>
+        </div>
+        <p class="metric-hint">Visualize a escala por semana ou mês e clique em um dia para ver os turnos de Plantão.</p>
+        <div class="schedule-nav">
+          <button id="schedule-prev" class="ghost" type="button">◀</button>
+          <h3 id="schedule-title"></h3>
+          <button id="schedule-next" class="ghost" type="button">▶</button>
+        </div>
+        <div class="weekdays">
+          <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span
+          ><span>Dom</span>
+        </div>
+        <div id="schedule-grid" class="schedule-grid"></div>
+        <div id="schedule-detail" class="schedule-detail"></div>
       </section>
 
       <section class="charts-row">
