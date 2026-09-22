@@ -146,6 +146,15 @@
           <input id="quick-patient-name" type="text" maxlength="80" placeholder="Digite antes de tocar num botão abaixo" />
         </label>
         <div id="consult-type-grid" class="btn-grid"></div>
+
+        <fieldset id="plantao-shift-override" class="shift-override-box">
+          <legend>Plantão ativo no registro</legend>
+          <label><input type="checkbox" class="shift-override-check" data-shift="m" /> M</label>
+          <label><input type="checkbox" class="shift-override-check" data-shift="t" /> T</label>
+          <label><input type="checkbox" class="shift-override-check" data-shift="reforco" /> Reforço</label>
+          <label><input type="checkbox" class="shift-override-check" data-shift="noturno" /> Noturno</label>
+        </fieldset>
+
         <div class="action-row">
           <button id="undo-btn" class="ghost" type="button">Desfazer último do dia selecionado</button>
         </div>
@@ -176,7 +185,7 @@
             <p><strong>T</strong> (13:00–19:00): 30 primeiros por R$ 20, depois R$ 15.</p>
             <p><strong>Reforço</strong> (19:00–00:00): 25 primeiros por R$ 20, depois R$ 15.</p>
             <p><strong>Noturno</strong> (00:00–07:00): 25 primeiros por R$ 28, depois R$ 15.</p>
-            <p class="metric-hint">A contagem de cada faixa reinicia todo dia.</p>
+            <p class="metric-hint">A contagem de cada faixa reinicia todo dia. Use o seletor "Plantão ativo no registro" acima para travar manualmente o turno, se necessário.</p>
           </div>
         </details>
         <details class="price-settings-box">
