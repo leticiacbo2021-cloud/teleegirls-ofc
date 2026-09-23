@@ -509,12 +509,41 @@ button:active { transform: translateY(1px); }
 .schedule-shift-tag.reforco { background: var(--one); }
 .schedule-shift-tag.noturno { background: var(--plantao); }
 .schedule-empty-label { color: var(--muted); font-size: 0.7rem; }
+.schedule-legend { margin-top: 0.2rem; }
+
+.schedule-shift-tag.planned {
+  background: transparent;
+  border: 1.5px dashed currentColor;
+  font-weight: 700;
+}
+.schedule-shift-tag.planned.m { color: var(--adulto); }
+.schedule-shift-tag.planned.t { color: var(--pediatria); }
+.schedule-shift-tag.planned.reforco { color: var(--one); }
+.schedule-shift-tag.planned.noturno { color: var(--plantao); }
 
 .schedule-detail { margin-top: 0.9rem; border-top: 1px solid var(--border); padding-top: 0.8rem; }
 .schedule-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
 .schedule-detail-head strong { font-size: 0.98rem; }
 .schedule-detail-list { list-style: none; margin: 0 0 0.5rem; padding: 0; display: grid; gap: 0.35rem; }
 .schedule-detail-list li { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; }
+
+.schedule-plan-box { margin-top: 0.9rem; border-top: 1px dashed var(--border); padding-top: 0.75rem; }
+.schedule-plan-title { margin: 0 0 0.5rem; font-weight: 700; font-size: 0.88rem; }
+.schedule-plan-checks { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-bottom: 0.4rem; }
+.schedule-plan-check { display: flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; cursor: pointer; }
+.schedule-plan-check input[type="checkbox"] { margin: 0; width: 1rem; height: 1rem; accent-color: var(--accent); cursor: pointer; }
+
+.atestado-total-grid { display: grid; gap: 0.8rem; grid-template-columns: repeat(2, minmax(160px, 1fr)); margin-top: 0.7rem; }
+.atestado-total-card { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 12px; padding: 0.7rem 0.85rem; }
+.atestado-summary-note { margin-top: 0.7rem; }
+
+.atestado-type-grid { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: 0.8rem; }
+.atestado-type-card { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 12px; padding: 0.7rem 0.85rem; }
+.atestado-type-title { margin: 0; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.72rem; color: var(--muted); font-weight: 700; }
+.atestado-type-rate { margin: 0.3rem 0 0; font-size: clamp(1.15rem, 1.8vw, 1.4rem); font-weight: 700; }
+.atestado-type-divider { height: 1px; background: var(--border); margin: 0.55rem 0; }
+.atestado-type-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; padding: 0.1rem 0; color: var(--muted); }
+.atestado-type-row strong { color: var(--text); font-weight: 700; }
 
 .modal-overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; justify-content: center; align-items: center; z-index: 12; padding: 1rem; }
 .modal-overlay.hidden { display: none; }
