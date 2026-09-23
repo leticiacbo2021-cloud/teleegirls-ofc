@@ -34,16 +34,25 @@ const SCHEDULE_SHIFT_ORDER = ["m", "t", "reforco", "noturno"];
 // "Plantão ativo no registro", os atendimentos de M e T do dia compartilham
 // um único limite (60) em vez de 30 cada um separadamente.
 const MT_COMBO_PRICING = { label: "M+T", threshold: 60, initial: 20, extra: 15 };
+// Atendimento de madrugada (00:00–07:00) SEM o turno Noturno marcado manualmente:
+// fica em R$ 20 fixo (sem escalonar pra R$ 28), porque a diária de R$ 28 exige
+// Noturno marcado. Conta numa faixa própria ("noturno_auto"), separada da faixa
+// oficial do Noturno marcado — assim um atendimento não-marcado nunca consome
+// o limite de 25 atendimentos da diária de R$ 28.
+const AUTO_NOTURNO_PRICING = { label: "Noturno (automático)", threshold: Infinity, initial: 20, extra: 20 };
 function getPricingConfigForGroup(group) {
-  return group === "mt" ? MT_COMBO_PRICING : SHIFT_PRICING[group];
+  if (group === "mt") return MT_COMBO_PRICING;
+  if (group === "noturno_auto") return AUTO_NOTURNO_PRICING;
+  return SHIFT_PRICING[group];
 }
 // Decide o turno de exibição (category) e o "grupo de preço" (pricingGroup)
 // de um atendimento de plantão, considerando o turno travado manualmente
 // no momento do registro (forcedShiftCategory: "m" | "t" | "mt" | "reforco" | "noturno" | null).
 function resolvePlantaoAssignment(ts, forcedShiftCategory) {
   const autoCategory = getShiftCategoryForTs(ts);
+  const autoGroup = autoCategory === "noturno" ? "noturno_auto" : autoCategory;
   if (!forcedShiftCategory) {
-    return { category: autoCategory, pricingGroup: autoCategory, manual: false };
+    return { category: autoCategory, pricingGroup: autoGroup, manual: false };
   }
   if (forcedShiftCategory === "mt") {
     if (autoCategory === "m" || autoCategory === "t") {
@@ -51,12 +60,12 @@ function resolvePlantaoAssignment(ts, forcedShiftCategory) {
     }
     // Fora da janela 07:00–19:00 (ex.: registro manual em outro horário com M+T ainda
     // marcados): ignora a combinação e usa o turno normal pelo horário.
-    return { category: autoCategory, pricingGroup: autoCategory, manual: false };
+    return { category: autoCategory, pricingGroup: autoGroup, manual: false };
   }
   if (SHIFT_PRICING[forcedShiftCategory]) {
     return { category: forcedShiftCategory, pricingGroup: forcedShiftCategory, manual: true };
   }
-  return { category: autoCategory, pricingGroup: autoCategory, manual: false };
+  return { category: autoCategory, pricingGroup: autoGroup, manual: false };
 }
 
 // ── Estado ──────────────────────────────────────────────────────────────────
@@ -95,6 +104,9 @@ function emptyData() {
     settings: {
       typePrices: { ...DEFAULT_TYPE_PRICES },
       monthlyGoals: {},
+      // Planejamento pessoal de plantões futuros: dayKey -> ["m","t",...].
+      // É só um lembrete visual na Escala — não afeta preço nem contagem.
+      plantaoPlan: {},
     },
   };
 }
@@ -309,9 +321,10 @@ function recalcPlantaoPricingForDay(dayKey) {
   if (!records.length) return;
   markDayDirty(dayKey);
   records.sort((a, b) => a.ts - b.ts);
-  // "mt" é um contador à parte: atendimentos de M e T registrados em modo
-  // combinado caem nele em vez de em "m"/"t" separadamente.
-  const counters = { noturno: 0, m: 0, t: 0, reforco: 0, mt: 0 };
+  // "mt" é um contador à parte (modo combinado M+T) e "noturno_auto" é a
+  // madrugada sem o turno Noturno marcado manualmente (R$ 20 fixo, não entra
+  // na faixa oficial de 25 atendimentos a R$ 28 do Noturno marcado).
+  const counters = { noturno: 0, noturno_auto: 0, m: 0, t: 0, reforco: 0, mt: 0 };
   for (const record of records) {
     if (record.type !== "plantao") continue;
     const autoCategory = getShiftCategoryForTs(record.ts);
@@ -325,7 +338,7 @@ function recalcPlantaoPricingForDay(dayKey) {
       group = record.plantaoPricingGroup;
     } else {
       category = autoCategory;
-      group = autoCategory;
+      group = autoCategory === "noturno" ? "noturno_auto" : autoCategory;
     }
     counters[group] += 1;
     const cfg = getPricingConfigForGroup(group);
@@ -350,7 +363,7 @@ function getPendingPlantaoPrice() {
   const dayKey = toDayKey(new Date(now));
   const autoCategory = getShiftCategoryForTs(now);
   let category = autoCategory;
-  let group = autoCategory;
+  let group = autoCategory === "noturno" ? "noturno_auto" : autoCategory;
   if (state.manualShiftOverride === "mt" && (autoCategory === "m" || autoCategory === "t")) {
     group = "mt";
   } else if (state.manualShiftOverride && SHIFT_PRICING[state.manualShiftOverride]) {
@@ -468,6 +481,24 @@ function computeMonthMetrics(monthKey) {
 }
 
 function getMonthRevenue(monthKey) { return computeMonthMetrics(monthKey).revenue; }
+
+// Totais de atestado do mês, gerais e por tipo de atendimento (Adulto,
+// Pediatria, ONE, Plantão). Usado pelo painel "Atendimentos com e sem
+// atestado no mês".
+function computeMonthAtestadoSummary(monthKey) {
+  const perType = {};
+  for (const t of TYPE_KEYS) perType[t] = { com: 0, sem: 0 };
+  let totalCom = 0;
+  let totalSem = 0;
+  for (const [dayKey, records] of Object.entries(state.data.days)) {
+    if (!dayKey.startsWith(`${monthKey}-`)) continue;
+    for (const r of records) {
+      if (r.atestado) { perType[r.type].com += 1; totalCom += 1; }
+      else { perType[r.type].sem += 1; totalSem += 1; }
+    }
+  }
+  return { perType, totalCom, totalSem, totalAll: totalCom + totalSem };
+}
 
 // Resumo dos atendimentos de Plantão de um dia, agrupados por turno (M/T/Reforço/Noturno).
 // Usado pela Escala de plantões — não afeta o cálculo de preço, só exibe o que já está salvo.
@@ -658,7 +689,9 @@ function renderConsultTypeButtons() {
     header.className = `type-card-header ${type}`;
     if (type === "plantao") {
       const { category, group, price } = getPendingPlantaoPrice();
-      const shiftLabel = group === "mt" ? `M+T (${SHIFT_PRICING[category].label})` : SHIFT_PRICING[category].label;
+      let shiftLabel = SHIFT_PRICING[category].label;
+      if (group === "mt") shiftLabel = `M+T (${SHIFT_PRICING[category].label})`;
+      else if (group === "noturno_auto") shiftLabel = `${SHIFT_PRICING[category].label} (auto)`;
       header.textContent = `Plantão ${shiftLabel} (+${formatCurrency(price)})`;
     } else {
       header.textContent = `${TYPE_META[type].label} (+${formatCurrency(prices[type])})`;
@@ -724,6 +757,27 @@ function registerConsult(type, atestado) {
   addRecord(dayKey, ts, type, atestado === true, name, forcedCategory);
   if (nameInput) nameInput.value = "";
   state.calendarCursor = startOfMonth(parseDayKey(dayKey));
+  scheduleSave();
+  renderAll();
+}
+
+// Corrige o turno de TODOS os atendimentos de Plantão já registrados no dia
+// selecionado, aplicando de uma vez a marcação atual de "Plantão ativo no
+// registro" (inclusive M+T combinado, ou nenhuma = volta ao automático).
+// Útil quando o turno errado foi marcado e vários atendimentos já foram
+// lançados — evita editar um por um.
+function applyShiftOverrideToSelectedDay() {
+  const dayKey = state.selectedDateKey;
+  const records = getDayRecords(dayKey).filter((r) => r.type === "plantao");
+  if (!records.length) return;
+  const forced = state.manualShiftOverride;
+  for (const record of records) {
+    const assignment = resolvePlantaoAssignment(record.ts, forced);
+    record.plantaoCategory = assignment.category;
+    record.plantaoPricingGroup = assignment.pricingGroup;
+    record.plantaoManual = assignment.manual;
+  }
+  recalcPlantaoPricingForDay(dayKey);
   scheduleSave();
   renderAll();
 }
@@ -854,6 +908,27 @@ function renderCalendar() {
   }
 }
 
+// ── Planejamento pessoal de plantões futuros (Escala) ───────────────────────
+// Guarda só a intenção de trabalhar tal turno em tal dia — não vira
+// atendimento nem afeta preço/contagem. Some sozinho da Escala assim que o
+// dia tiver atendimentos reais registrados (a exibição prioriza o real).
+function getPlantaoPlanForDay(dayKey) {
+  const plan = state.data.settings.plantaoPlan || {};
+  return Array.isArray(plan[dayKey]) ? plan[dayKey] : [];
+}
+function togglePlantaoPlanShift(dayKey, shift, checked) {
+  if (!state.data.settings.plantaoPlan) state.data.settings.plantaoPlan = {};
+  const plan = state.data.settings.plantaoPlan;
+  const current = new Set(plan[dayKey] || []);
+  if (checked) current.add(shift);
+  else current.delete(shift);
+  if (current.size) plan[dayKey] = SCHEDULE_SHIFT_ORDER.filter((s) => current.has(s));
+  else delete plan[dayKey];
+  markSettingsDirty();
+  scheduleSave();
+  renderScheduleGrid();
+}
+
 // ── Escala de plantões (visão dedicada por semana/mês) ──────────────────────
 function renderScheduleGrid() {
   const grid = document.getElementById("schedule-grid");
@@ -895,12 +970,17 @@ function renderScheduleGrid() {
     const weekdayLabel = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "").toUpperCase();
     let tagsHtml;
     if (total > 0) {
+      // Dia com atendimento real registrado: mostra o que de fato aconteceu.
       tagsHtml = SCHEDULE_SHIFT_ORDER
         .filter((cat) => breakdown[cat].count > 0)
         .map((cat) => `<span class="schedule-shift-tag ${cat}">${SHIFT_PRICING[cat].label} ${breakdown[cat].count}</span>`)
         .join("");
     } else {
-      tagsHtml = `<span class="schedule-empty-label">Sem plantão.</span>`;
+      // Sem atendimento ainda: mostra o planejamento (turno tracejado), se houver.
+      const planned = getPlantaoPlanForDay(key);
+      tagsHtml = planned.length
+        ? planned.map((cat) => `<span class="schedule-shift-tag planned ${cat}">${SHIFT_PRICING[cat].label}</span>`).join("")
+        : `<span class="schedule-empty-label">Sem plantão.</span>`;
     }
 
     btn.innerHTML = `
@@ -945,12 +1025,26 @@ function renderScheduleDetail() {
       <p class="metric-hint">Total do dia: ${total} plantão${total > 1 ? "ões" : ""} · ${formatCurrency(revenue)}</p>
     `;
   }
+
+  const planned = getPlantaoPlanForDay(key);
+  const planChecksHtml = SCHEDULE_SHIFT_ORDER
+    .map(
+      (cat) =>
+        `<label class="schedule-plan-check"><input type="checkbox" class="schedule-plan-shift-check" data-shift="${cat}" ${planned.includes(cat) ? "checked" : ""} /> ${SHIFT_PRICING[cat].label}</label>`
+    )
+    .join("");
+
   box.innerHTML = `
     <div class="schedule-detail-head">
       <strong>${formatDateLong(key)}</strong>
       <button id="schedule-goto-day" class="ghost" type="button">Ver/editar este dia</button>
     </div>
     ${body}
+    <div class="schedule-plan-box">
+      <p class="schedule-plan-title">Planejamento (turnos que pretende trabalhar neste dia)</p>
+      <div class="schedule-plan-checks">${planChecksHtml}</div>
+      <p class="metric-hint">Só um lembrete visual — não afeta preço nem contagem, e some sozinho quando o dia tiver atendimentos reais.</p>
+    </div>
   `;
   const gotoBtn = document.getElementById("schedule-goto-day");
   if (gotoBtn) {
@@ -961,6 +1055,9 @@ function renderScheduleDetail() {
       document.querySelector(".actions.card")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
+  document.querySelectorAll(".schedule-plan-shift-check").forEach((cb) => {
+    cb.addEventListener("change", () => togglePlantaoPlanShift(key, cb.dataset.shift, cb.checked));
+  });
 }
 
 function renderSchedule() {
@@ -1149,6 +1246,37 @@ function renderMonthGoal() {
   progressEl.textContent = `Progresso: ${progress.toFixed(1)}%`;
 }
 
+function renderAtestadoSummary() {
+  const monthKey = monthKeyFromDayKey(toDayKey(state.calendarCursor));
+  const { perType, totalCom, totalSem, totalAll } = computeMonthAtestadoSummary(monthKey);
+
+  document.getElementById("atestado-total-com").textContent = String(totalCom);
+  document.getElementById("atestado-total-sem").textContent = String(totalSem);
+  document.getElementById("atestado-total-com-hint").textContent =
+    totalAll > 0 ? `${((totalCom / totalAll) * 100).toFixed(1)}% dos atendimentos do mês` : "Sem base";
+  document.getElementById("atestado-total-sem-hint").textContent =
+    totalAll > 0 ? `${((totalSem / totalAll) * 100).toFixed(1)}% dos atendimentos do mês` : "Sem base";
+
+  const grid = document.getElementById("atestado-type-grid");
+  grid.innerHTML = "";
+  for (const type of TYPE_KEYS) {
+    const { com, sem } = perType[type];
+    const total = com + sem;
+    const rate = total > 0 ? (com / total) * 100 : null;
+    const card = document.createElement("article");
+    card.className = "atestado-type-card";
+    card.innerHTML = `
+      <p class="atestado-type-title">${TYPE_META[type].label}</p>
+      <p class="atestado-type-rate">${rate === null ? "Sem base" : `${rate.toFixed(1)}%`}</p>
+      <p class="metric-hint">com atestado</p>
+      <div class="atestado-type-divider"></div>
+      <div class="atestado-type-row"><span>Com atestado</span><strong>${com}</strong></div>
+      <div class="atestado-type-row"><span>Sem atestado</span><strong>${sem}</strong></div>
+    `;
+    grid.appendChild(card);
+  }
+}
+
 function destroyChart(key) {
   if (state.charts[key]) { state.charts[key].destroy(); state.charts[key] = null; }
 }
@@ -1251,6 +1379,7 @@ function renderAll() {
   renderCalendar();
   renderMonthGoal();
   renderSchedule();
+  renderAtestadoSummary();
   renderCharts(metrics);
   const prices = getTypePrices();
   document.getElementById("price-adulto").value = String(prices.adulto);
@@ -1361,6 +1490,7 @@ function normalizeData(raw) {
   base.days = raw.days && typeof raw.days === "object" ? raw.days : {};
   base.settings.typePrices = { ...base.settings.typePrices, ...(raw.settings?.typePrices || {}) };
   base.settings.monthlyGoals = raw.settings?.monthlyGoals && typeof raw.settings.monthlyGoals === "object" ? raw.settings.monthlyGoals : {};
+  base.settings.plantaoPlan = raw.settings?.plantaoPlan && typeof raw.settings.plantaoPlan === "object" ? raw.settings.plantaoPlan : {};
   return base;
 }
 
@@ -1420,6 +1550,7 @@ function bindEvents() {
   });
 
   document.getElementById("undo-btn").addEventListener("click", undoLastFromSelectedDay);
+  document.getElementById("apply-shift-override-btn").addEventListener("click", applyShiftOverrideToSelectedDay);
 
   document.getElementById("prev-month").addEventListener("click", () => {
     state.calendarCursor = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() - 1, 1);
