@@ -158,6 +158,7 @@
 
         <div class="action-row">
           <button id="undo-btn" class="ghost" type="button">Desfazer último do dia selecionado</button>
+          <button id="apply-shift-override-btn" class="ghost" type="button" title="Marque o turno certo acima e clique aqui para corrigir todos os atendimentos de Plantão já lançados no dia selecionado">Aplicar turno aos atendimentos já registrados</button>
         </div>
         <details class="price-settings-box">
           <summary>Ajustar valores (Adulto, Pediatria, One)</summary>
@@ -186,8 +187,9 @@
             <p><strong>T</strong> (13:00–19:00): se estiver sozinho, 30 primeiros por R$ 20, depois R$ 15.</p>
             <p><strong>M + T</strong>: se os dois estiverem marcados juntos, compartilham 60 atendimentos por R$ 20 entre 07:00 e 19:00; depois R$ 15.</p>
             <p><strong>Reforço</strong> (19:00–00:00): 25 primeiros por R$ 20, depois R$ 15.</p>
-            <p><strong>Noturno</strong> (00:00–07:00): 25 primeiros por R$ 28, depois R$ 15.</p>
-            <p class="metric-hint">A contagem de cada faixa reinicia todo dia. Use o seletor "Plantão ativo no registro" acima para travar manualmente o turno.</p>
+            <p><strong>Noturno</strong> (00:00–07:00), com o turno marcado: 25 primeiros por R$ 28, depois R$ 15.</p>
+            <p><strong>Madrugada sem marcar Noturno</strong>: fica em R$ 20 fixo (a diária de R$ 28 exige o turno Noturno marcado).</p>
+            <p class="metric-hint">A contagem de cada faixa reinicia todo dia. Marque o turno errado por engano e já registrou atendimentos? Marque o turno certo e use "Aplicar turno aos atendimentos já registrados" para corrigir o dia inteiro de uma vez.</p>
           </div>
         </details>
         <details class="price-settings-box">
@@ -316,6 +318,7 @@
           </div>
         </div>
         <p class="metric-hint">Visualize a escala por semana ou mês e clique em um dia para ver os turnos de Plantão.</p>
+        <p class="metric-hint schedule-legend">Turno com fundo colorido = já atendido. Turno tracejado = planejado (ainda não atendido).</p>
         <div class="schedule-nav">
           <button id="schedule-prev" class="ghost" type="button">◀</button>
           <h3 id="schedule-title"></h3>
@@ -327,6 +330,24 @@
         </div>
         <div id="schedule-grid" class="schedule-grid"></div>
         <div id="schedule-detail" class="schedule-detail"></div>
+      </section>
+
+      <section class="card atestado-summary-card">
+        <h2>Atendimentos com e sem atestado no mês</h2>
+        <div class="atestado-total-grid">
+          <article class="atestado-total-card">
+            <p class="metric-label">Total com atestado</p>
+            <p id="atestado-total-com" class="metric-value"></p>
+            <p id="atestado-total-com-hint" class="metric-hint"></p>
+          </article>
+          <article class="atestado-total-card">
+            <p class="metric-label">Total sem atestado</p>
+            <p id="atestado-total-sem" class="metric-value"></p>
+            <p id="atestado-total-sem-hint" class="metric-hint"></p>
+          </article>
+        </div>
+        <p class="metric-hint atestado-summary-note">Totais de todos os tipos de atendimento no mês, incluindo plantões.</p>
+        <div id="atestado-type-grid" class="atestado-type-grid"></div>
       </section>
 
       <section class="charts-row">
