@@ -545,6 +545,30 @@ button:active { transform: translateY(1px); }
 .atestado-type-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; padding: 0.1rem 0; color: var(--muted); }
 .atestado-type-row strong { color: var(--text); font-weight: 700; }
 
+.job2-summary-grid { display: grid; gap: 0.8rem; grid-template-columns: repeat(3, minmax(140px, 1fr)); margin: 0.9rem 0; }
+.job2-metric { padding: 0.7rem 0.85rem; }
+.job2-list-title { margin: 0.9rem 0 0.4rem; font-size: 1rem; }
+
+.job2-form { margin-top: 0.55rem; display: grid; gap: 0.8rem; }
+.job2-calendar-box { border: 1px solid var(--border); border-radius: 12px; padding: 0.6rem 0.7rem; background: var(--surface-soft); }
+.job2-calendar-head { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; margin-bottom: 0.4rem; }
+.job2-calendar-head h3 { margin: 0; font-size: 0.98rem; }
+.job2-calendar-grid .job2-cal-cell { min-height: 56px; font-size: 0.72rem; }
+
+.job2-shift-box, .job2-category-box {
+  border: 1px solid var(--border); border-radius: 12px; padding: 0.5rem 0.75rem; background: var(--surface-soft);
+  display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap;
+}
+.job2-shift-box legend, .job2-category-box legend { padding: 0 0.3rem; font-size: 0.82rem; font-weight: 700; color: var(--muted); }
+.job2-shift-box label, .job2-category-box label { display: flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; cursor: pointer; }
+.job2-shift-box input[type="radio"], .job2-category-box input[type="radio"] { margin: 0; width: 1rem; height: 1rem; accent-color: var(--accent); cursor: pointer; }
+
+.job2-rate-field { display: grid; gap: 0.28rem; color: var(--muted); font-size: 0.9rem; max-width: 220px; }
+.job2-rate-field input { border: 1px solid var(--border); border-radius: 9px; padding: 0.42rem 0.5rem; font: inherit; background: var(--field-bg); color: var(--text); }
+
+.tag.job2-category.generalista { background: var(--adulto); }
+.tag.job2-category.prep { background: var(--one); }
+
 .modal-overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; justify-content: center; align-items: center; z-index: 12; padding: 1rem; }
 .modal-overlay.hidden { display: none; }
 .modal-card { width: min(680px, 100%); border-radius: 16px; border: 1px solid var(--border); background: var(--surface-solid); padding: 1rem; box-shadow: var(--shadow); }
@@ -586,6 +610,7 @@ input, select, textarea { color: var(--text); }
   .metrics-grid { grid-template-columns: repeat(2, 1fr); }
   .split-layout, .charts-row { grid-template-columns: 1fr; }
   .month-goal-grid { grid-template-columns: 1fr 1fr; }
+  .job2-summary-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 640px) {
   .btn-grid { grid-template-columns: 1fr; }
@@ -593,4 +618,6 @@ input, select, textarea { color: var(--text); }
   .manual-form, .type-prices-form { grid-template-columns: 1fr; }
   .month-goal-grid { grid-template-columns: 1fr; }
   .schedule-day-cell { min-height: 70px; font-size: 0.7rem; padding: 0.3rem; }
+  .job2-summary-grid { grid-template-columns: 1fr; }
+  .job2-calendar-grid .job2-cal-cell { min-height: 46px; font-size: 0.68rem; padding: 0.25rem; }
 }
