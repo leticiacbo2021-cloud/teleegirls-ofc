@@ -350,6 +350,84 @@
         <div id="atestado-type-grid" class="atestado-type-grid"></div>
       </section>
 
+      <section class="card job2-card">
+        <div class="card-head">
+          <h2>Emprego 2 (plantões por hora)</h2>
+        </div>
+        <p class="metric-hint">Registre os plantões do seu outro trabalho, pagos por hora, para acompanhar o faturamento dele separado dos atendimentos acima.</p>
+
+        <form id="job2-form" class="job2-form">
+          <div class="job2-calendar-box">
+            <div class="job2-calendar-head">
+              <button id="job2-cal-prev" class="ghost" type="button">◀</button>
+              <h3 id="job2-cal-title"></h3>
+              <button id="job2-cal-next" class="ghost" type="button">▶</button>
+            </div>
+            <div class="weekdays">
+              <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span
+              ><span>Dom</span>
+            </div>
+            <div id="job2-calendar-grid" class="calendar-grid job2-calendar-grid"></div>
+            <input id="job2-date" type="hidden" />
+          </div>
+
+          <fieldset class="job2-shift-box">
+            <legend>Turno do plantão</legend>
+            <label><input type="radio" name="job2-shift" class="job2-shift-radio" value="mt" checked /> M+T (07h–19h)</label>
+            <label><input type="radio" name="job2-shift" class="job2-shift-radio" value="m" /> M (07h–13h)</label>
+            <label><input type="radio" name="job2-shift" class="job2-shift-radio" value="t" /> T (13h–19h)</label>
+            <label><input type="radio" name="job2-shift" class="job2-shift-radio" value="reforco" /> 17h–23h</label>
+          </fieldset>
+
+          <fieldset class="job2-category-box">
+            <legend>Função</legend>
+            <label><input type="radio" name="job2-category" class="job2-category-radio" value="generalista" checked /> Generalista</label>
+            <label><input type="radio" name="job2-category" class="job2-category-radio" value="prep" /> Prep</label>
+          </fieldset>
+
+          <label class="job2-rate-field">
+            Valor/hora (R$)
+            <input id="job2-rate" type="number" min="0" step="0.5" required />
+          </label>
+          <button type="submit" class="ghost">Registrar plantão</button>
+        </form>
+
+        <h3 id="job2-month-label" class="job2-list-title">Resumo do mês</h3>
+        <div class="job2-summary-grid">
+          <article class="metric card job2-metric">
+            <p class="metric-label">Horas no mês</p>
+            <p id="job2-month-hours" class="metric-value"></p>
+          </article>
+          <article class="metric card job2-metric">
+            <p class="metric-label">Bruto no mês</p>
+            <p id="job2-month-gross" class="metric-value"></p>
+          </article>
+          <article class="metric card job2-metric">
+            <p class="metric-label">Líquido estimado</p>
+            <p id="job2-month-net" class="metric-value"></p>
+          </article>
+        </div>
+
+        <details class="price-settings-box">
+          <summary>Ajustar percentual de desconto estimado</summary>
+          <form id="job2-discount-form" class="type-prices-form">
+            <label>
+              INSS (%)
+              <input id="job2-inss-percent" type="number" min="0" max="100" step="0.1" />
+            </label>
+            <label>
+              IRRF efetivo (%)
+              <input id="job2-irrf-percent" type="number" min="0" max="100" step="0.1" />
+            </label>
+          </form>
+          <p id="job2-net-factor-hint" class="metric-hint"></p>
+          <p class="metric-hint">Estimativa a partir dos extratos de repasse enviados. A alíquota de IRRF é progressiva e pode mudar conforme sua renda no mês — ajuste aqui se o extrato real mostrar outro valor.</p>
+        </details>
+
+        <h3 class="job2-list-title">Plantões do mês exibido acima</h3>
+        <ul id="job2-list" class="day-list"></ul>
+      </section>
+
       <section class="charts-row">
         <article class="card">
           <h2>Semana (atendimentos e faturamento)</h2>
