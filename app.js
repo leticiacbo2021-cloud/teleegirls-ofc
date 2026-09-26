@@ -48,14 +48,14 @@ const AUTO_NOTURNO_PRICING = { label: "Noturno (automático)", threshold: Infini
 // IRRF é progressiva e pode variar conforme a faixa de renda do mês.
 const JOB2_DEFAULT_INSS_PERCENT = 20;
 const JOB2_DEFAULT_IRRF_PERCENT = 9.7;
-// Turnos pré-definidos do Emprego 2 (horários fixos, escolhidos por botão em
-// vez de digitar hora a hora).
-const JOB2_SHIFTS = {
-  mt: { label: "M+T (07h–19h)", start: "07:00", end: "19:00" },
-  m: { label: "M (07h–13h)", start: "07:00", end: "13:00" },
-  t: { label: "T (13h–19h)", start: "13:00", end: "19:00" },
-  reforco: { label: "17h–23h", start: "17:00", end: "23:00" },
-};
+// Valor/hora padrão diurno e noturno, calculado a partir da média dos
+// extratos de repasse da COAPH analisados (várias linhas "Diurno" e
+// "Noturno" já divididas pela própria cooperativa, valor ÷ horas de cada
+// linha). Fica editável na interface — ajuste se a tabela da cooperativa
+// mudar — mas por padrão o app já calcula sozinho, sem precisar reenviar
+// o extrato a cada plantão.
+const JOB2_DEFAULT_DAY_RATE = 120.21;
+const JOB2_DEFAULT_NIGHT_RATE = 129.47;
 const JOB2_CATEGORY_META = { generalista: "Generalista", prep: "Prep" };
 function getPricingConfigForGroup(group) {
   if (group === "mt") return MT_COMBO_PRICING;
@@ -103,6 +103,9 @@ const state = {
   // para o próximo plantão a registrar.
   job2Cursor: startOfMonth(new Date()),
   job2SelectedDate: toDayKey(new Date()),
+  // Plantões reconhecidos automaticamente a partir de uma foto do extrato,
+  // pendentes de revisão antes de virarem registros de verdade.
+  job2ImportRows: [],
   charts: { day: null, week: null, month: null },
   saveTimer: null,
   saveInFlight: false,
@@ -130,9 +133,14 @@ function emptyData() {
       plantaoPlan: {},
       // Emprego 2: plantões de outro trabalho, pagos por hora. Guardado à
       // parte dos atendimentos (days) porque não tem preço escalonado nem
-      // tipo — é só data/hora de início e fim + valor da hora.
+      // tipo — é só data/hora de início e fim. O valor é calculado sozinho
+      // a partir do valor/hora diurno e noturno configurado abaixo (não
+      // fica salvo em cada plantão, então se a tabela mudar é só ajustar
+      // aqui uma vez).
       job2: {
-        records: {}, // dayKey -> [{ id, startTs, endTs, hourlyRate }]
+        records: {}, // dayKey -> [{ id, startTs, endTs, category }]
+        dayRate: JOB2_DEFAULT_DAY_RATE,
+        nightRate: JOB2_DEFAULT_NIGHT_RATE,
         inssPercent: JOB2_DEFAULT_INSS_PERCENT,
         irrfPercent: JOB2_DEFAULT_IRRF_PERCENT,
       },
@@ -579,14 +587,50 @@ function job2Timestamps(dayKey, startTime, endTime) {
   return { startTs, endTs };
 }
 
-function addJob2Record(dayKey, startTs, endTs, hourlyRate, category) {
+// Corte diurno/noturno do Emprego 2: como nos extratos da cooperativa, tudo
+// entre 07:00 e 19:00 é "diurno" e o restante (19:00–07:00) é "noturno".
+// Um plantão pode cruzar mais de uma fronteira (ex.: 17h–23h tem 2h diurnas
+// e 4h noturnas) — por isso soma-se por trechos em vez de olhar só o início.
+const JOB2_DAY_START_MIN = 7 * 60; // 07:00
+const JOB2_DAY_END_MIN = 19 * 60; // 19:00
+function computeDayNightHours(startTs, endTs) {
+  let dayMs = 0;
+  let nightMs = 0;
+  let cursor = startTs;
+  let guard = 0;
+  while (cursor < endTs && guard < 200) {
+    guard += 1;
+    const d = new Date(cursor);
+    const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const minutesOfDay = (cursor - dayStart) / 60000;
+    let isDay;
+    let nextBoundaryMin;
+    if (minutesOfDay >= JOB2_DAY_START_MIN && minutesOfDay < JOB2_DAY_END_MIN) {
+      isDay = true;
+      nextBoundaryMin = JOB2_DAY_END_MIN;
+    } else if (minutesOfDay >= JOB2_DAY_END_MIN) {
+      isDay = false;
+      nextBoundaryMin = 24 * 60 + JOB2_DAY_START_MIN;
+    } else {
+      isDay = false;
+      nextBoundaryMin = JOB2_DAY_START_MIN;
+    }
+    const nextBoundaryTs = dayStart + nextBoundaryMin * 60000;
+    const segmentEnd = Math.min(endTs, nextBoundaryTs);
+    const segMs = Math.max(0, segmentEnd - cursor);
+    if (isDay) dayMs += segMs; else nightMs += segMs;
+    cursor = segmentEnd;
+  }
+  return { dayHours: dayMs / MS_HOUR, nightHours: nightMs / MS_HOUR };
+}
+
+function addJob2Record(dayKey, startTs, endTs, category) {
   const job2 = getJob2Settings();
   if (!job2.records[dayKey]) job2.records[dayKey] = [];
   const record = {
     id: createId(),
     startTs,
     endTs,
-    hourlyRate,
     category: category === "prep" ? "prep" : "generalista",
   };
   job2.records[dayKey].push(record);
@@ -606,7 +650,16 @@ function deleteJob2Record(dayKey, recordId) {
 }
 
 function getJob2RecordHours(record) { return Math.max(0, (record.endTs - record.startTs) / MS_HOUR); }
-function getJob2RecordGross(record) { return getJob2RecordHours(record) * (Number(record.hourlyRate) || 0); }
+// Valor bruto do plantão: horas diurnas × valor/hora diurno configurado +
+// horas noturnas × valor/hora noturno configurado. O valor/hora não fica
+// salvo em cada plantão — vem sempre da configuração atual (Emprego 2 →
+// "Ajustar valor/hora"), calculada por padrão a partir dos extratos da
+// cooperativa. Assim, se a tabela mudar, basta ajustar uma vez.
+function getJob2RecordGross(record) {
+  const job2 = getJob2Settings();
+  const { dayHours, nightHours } = computeDayNightHours(record.startTs, record.endTs);
+  return dayHours * (Number(job2.dayRate) || 0) + nightHours * (Number(job2.nightRate) || 0);
+}
 
 // Estima o valor líquido a partir do bruto, aplicando primeiro o desconto de
 // INSS e, sobre o que sobra, o IRRF efetivo — replicando a ordem de cálculo
@@ -646,6 +699,149 @@ function getJob2MonthRecordsFlat(monthKey) {
   }
   out.sort((a, b) => a.startTs - b.startTs);
   return out;
+}
+
+// ── Importar plantões do Emprego 2 automaticamente de uma foto ─────────────
+// Lê o texto de uma imagem (print da área do cooperado, com colunas "Data
+// Entrada" / "Data Saída") via OCR no navegador e tenta reconhecer pares de
+// data+hora em sequência. Cada par vira uma linha de prévia editável — nada
+// é salvo até o usuário conferir e clicar em "Adicionar plantões selecionados".
+function parseJob2ImportText(text) {
+  const re = /(\d{2})\/(\d{2})\/(\d{4})\D{0,4}(\d{1,2}):(\d{2})/g;
+  const matches = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const [, dd, mm, yyyy, hh, min] = m;
+    const hour = hh.padStart(2, "0");
+    if (Number(dd) < 1 || Number(dd) > 31 || Number(mm) < 1 || Number(mm) > 12) continue;
+    if (Number(hour) > 23 || Number(min) > 59) continue;
+    matches.push({ dayKey: `${yyyy}-${mm}-${dd}`, time: `${hour}:${min}` });
+  }
+  const rows = [];
+  for (let i = 0; i + 1 < matches.length; i += 2) {
+    const entrada = matches[i];
+    const saida = matches[i + 1];
+    rows.push({
+      id: createId(),
+      dayKey: entrada.dayKey,
+      startTime: entrada.time,
+      endTime: saida.time,
+      include: true,
+    });
+  }
+  return rows;
+}
+
+async function processJob2ImportImage(file) {
+  const statusEl = document.getElementById("job2-import-status");
+  if (!statusEl) return;
+  if (!file) { statusEl.textContent = "Selecione uma imagem primeiro."; return; }
+  if (typeof Tesseract === "undefined") {
+    statusEl.textContent = "Não foi possível carregar o leitor de imagem. Verifique sua conexão e tente de novo.";
+    return;
+  }
+  statusEl.textContent = "Lendo imagem... isso pode levar alguns segundos.";
+  state.job2ImportRows = [];
+  renderJob2ImportPreview();
+  try {
+    const { data } = await Tesseract.recognize(file, "por", {
+      logger: (m) => {
+        if (m.status === "recognizing text" && typeof m.progress === "number") {
+          statusEl.textContent = `Lendo imagem... ${Math.round(m.progress * 100)}%`;
+        }
+      },
+    });
+    const rows = parseJob2ImportText(data?.text || "");
+    state.job2ImportRows = rows;
+    renderJob2ImportPreview();
+    statusEl.textContent = rows.length
+      ? `${rows.length} plantão${rows.length > 1 ? "ões" : ""} encontrados. Confira as datas/horários antes de adicionar — o OCR pode errar em fotos com letra pequena.`
+      : "Não consegui reconhecer nenhum par de entrada/saída nessa imagem. Tente uma foto mais nítida, mais próxima da tabela e bem iluminada.";
+  } catch (err) {
+    statusEl.textContent = "Erro ao ler a imagem. Tente novamente.";
+  }
+}
+
+function renderJob2ImportPreview() {
+  const previewEl = document.getElementById("job2-import-preview");
+  if (!previewEl) return;
+  previewEl.innerHTML = "";
+  if (!state.job2ImportRows.length) return;
+
+  const list = document.createElement("ul");
+  list.className = "day-list";
+  for (const row of state.job2ImportRows) {
+    const li = document.createElement("li");
+    const rowDiv = document.createElement("div");
+    rowDiv.className = "day-row";
+    const main = document.createElement("div");
+    main.className = "day-main";
+    main.innerHTML = `
+      <label class="manual-check">
+        <input type="checkbox" class="job2-import-include" data-id="${row.id}" ${row.include ? "checked" : ""} />
+        Incluir
+      </label>
+      <input type="date" class="job2-import-date" data-id="${row.id}" value="${row.dayKey}" />
+      <input type="time" class="job2-import-start" data-id="${row.id}" value="${row.startTime}" />
+      <span>até</span>
+      <input type="time" class="job2-import-end" data-id="${row.id}" value="${row.endTime}" />
+    `;
+    rowDiv.appendChild(main);
+    li.appendChild(rowDiv);
+    list.appendChild(li);
+  }
+  previewEl.appendChild(list);
+
+  previewEl.querySelectorAll(".job2-import-include").forEach((input) => {
+    input.addEventListener("change", () => {
+      const row = state.job2ImportRows.find((r) => r.id === input.dataset.id);
+      if (row) row.include = input.checked;
+    });
+  });
+  previewEl.querySelectorAll(".job2-import-date").forEach((input) => {
+    input.addEventListener("change", () => {
+      const row = state.job2ImportRows.find((r) => r.id === input.dataset.id);
+      if (row) row.dayKey = input.value;
+    });
+  });
+  previewEl.querySelectorAll(".job2-import-start").forEach((input) => {
+    input.addEventListener("change", () => {
+      const row = state.job2ImportRows.find((r) => r.id === input.dataset.id);
+      if (row) row.startTime = input.value;
+    });
+  });
+  previewEl.querySelectorAll(".job2-import-end").forEach((input) => {
+    input.addEventListener("change", () => {
+      const row = state.job2ImportRows.find((r) => r.id === input.dataset.id);
+      if (row) row.endTime = input.value;
+    });
+  });
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "ghost";
+  addBtn.textContent = "Adicionar plantões selecionados";
+  addBtn.addEventListener("click", addJob2ImportRows);
+  previewEl.appendChild(addBtn);
+}
+
+function addJob2ImportRows() {
+  const selected = state.job2ImportRows.filter((r) => r.include && r.dayKey && r.startTime && r.endTime);
+  if (!selected.length) return;
+  for (const row of selected) {
+    const { startTs, endTs } = job2Timestamps(row.dayKey, row.startTime, row.endTime);
+    addJob2Record(row.dayKey, startTs, endTs, "generalista");
+  }
+  state.job2ImportRows = [];
+  renderJob2ImportPreview();
+  const statusEl = document.getElementById("job2-import-status");
+  if (statusEl) {
+    statusEl.textContent = `${selected.length} plantão${selected.length > 1 ? "ões" : ""} adicionados. O valor já foi calculado automaticamente com o valor/hora diurno e noturno configurado.`;
+  }
+  const fileInput = document.getElementById("job2-import-file");
+  if (fileInput) fileInput.value = "";
+  scheduleSave();
+  renderAll();
 }
 
 // ── Resumo anual ─────────────────────────────────────────────────────────────
@@ -1530,6 +1726,20 @@ function setupJob2Controls() {
     state.job2Cursor = new Date(state.job2Cursor.getFullYear(), state.job2Cursor.getMonth() + 1, 1);
     renderJob2Calendar();
   });
+  document.querySelectorAll(".job2-preset-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.getElementById("job2-start-time").value = btn.dataset.start;
+      document.getElementById("job2-end-time").value = btn.dataset.end;
+    });
+  });
+  const importBtn = document.getElementById("job2-import-process-btn");
+  if (importBtn) {
+    importBtn.addEventListener("click", () => {
+      const fileInput = document.getElementById("job2-import-file");
+      const file = fileInput?.files?.[0];
+      processJob2ImportImage(file);
+    });
+  }
 }
 
 // Mostra o resumo e a lista de plantões do Emprego 2 para o mesmo mês que o
@@ -1540,6 +1750,8 @@ function renderJob2() {
   document.getElementById("job2-irrf-percent").value = String(job2.irrfPercent);
   const netFactor = (1 - job2.inssPercent / 100) * (1 - job2.irrfPercent / 100) * 100;
   document.getElementById("job2-net-factor-hint").textContent = `Com esses percentuais, cerca de ${netFactor.toFixed(1).replace(".", ",")}% do valor bruto vira líquido.`;
+  document.getElementById("job2-rate-day-default").value = String(job2.dayRate);
+  document.getElementById("job2-rate-night-default").value = String(job2.nightRate);
 
   const dateInput = document.getElementById("job2-date");
   if (!dateInput.value) dateInput.value = state.job2SelectedDate;
@@ -1563,6 +1775,7 @@ function renderJob2() {
   }
   for (const record of records) {
     const hours = getJob2RecordHours(record);
+    const { dayHours, nightHours } = computeDayNightHours(record.startTs, record.endTs);
     const gross = getJob2RecordGross(record);
     const li = document.createElement("li");
     const row = document.createElement("div");
@@ -1574,7 +1787,7 @@ function renderJob2() {
       <span>${record.dayKey.split("-").reverse().join("/")}</span>
       <span>${toTimeInputValue(record.startTs)}–${toTimeInputValue(record.endTs)}</span>
       <span class="tag job2-category ${category}">${JOB2_CATEGORY_META[category]}</span>
-      <span class="metric-hint">${hours.toFixed(1).replace(".", ",")}h</span>
+      <span class="metric-hint">${hours.toFixed(1).replace(".", ",")}h total (${dayHours.toFixed(1).replace(".", ",")}h diurno · ${nightHours.toFixed(1).replace(".", ",")}h noturno)</span>
       <span class="metric-hint">${formatCurrency(gross)}</span>
     `;
     const actions = document.createElement("div");
@@ -1720,8 +1933,18 @@ function normalizeData(raw) {
   base.settings.monthlyGoals = raw.settings?.monthlyGoals && typeof raw.settings.monthlyGoals === "object" ? raw.settings.monthlyGoals : {};
   base.settings.plantaoPlan = raw.settings?.plantaoPlan && typeof raw.settings.plantaoPlan === "object" ? raw.settings.plantaoPlan : {};
   const rawJob2 = raw.settings?.job2;
+  const rawJob2Records = rawJob2?.records && typeof rawJob2.records === "object" ? rawJob2.records : {};
+  const normalizedRecords = {};
+  for (const [dayKey, dayRecords] of Object.entries(rawJob2Records)) {
+    normalizedRecords[dayKey] = Array.isArray(dayRecords) ? dayRecords : [];
+  }
   base.settings.job2 = {
-    records: rawJob2?.records && typeof rawJob2.records === "object" ? rawJob2.records : {},
+    records: normalizedRecords,
+    // Registros antigos guardavam valor/hora por plantão; a partir de agora
+    // o valor/hora é único e configurado aqui, então plantões antigos passam
+    // a usar automaticamente este valor também.
+    dayRate: Number.isFinite(Number(rawJob2?.dayRate)) ? Number(rawJob2.dayRate) : JOB2_DEFAULT_DAY_RATE,
+    nightRate: Number.isFinite(Number(rawJob2?.nightRate)) ? Number(rawJob2.nightRate) : JOB2_DEFAULT_NIGHT_RATE,
     inssPercent: Number.isFinite(Number(rawJob2?.inssPercent)) ? Number(rawJob2.inssPercent) : JOB2_DEFAULT_INSS_PERCENT,
     irrfPercent: Number.isFinite(Number(rawJob2?.irrfPercent)) ? Number(rawJob2.irrfPercent) : JOB2_DEFAULT_IRRF_PERCENT,
   };
@@ -1848,17 +2071,29 @@ function bindEvents() {
   document.getElementById("job2-form").addEventListener("submit", (event) => {
     event.preventDefault();
     const dayKey = document.getElementById("job2-date").value || state.job2SelectedDate;
-    const shiftKey = document.querySelector('input[name="job2-shift"]:checked')?.value;
+    const startTime = document.getElementById("job2-start-time").value;
+    const endTime = document.getElementById("job2-end-time").value;
     const category = document.querySelector('input[name="job2-category"]:checked')?.value;
-    const shift = JOB2_SHIFTS[shiftKey];
-    const rate = Number(document.getElementById("job2-rate").value);
-    if (!dayKey || !shift || !Number.isFinite(rate) || rate < 0) return;
-    const { startTs, endTs } = job2Timestamps(dayKey, shift.start, shift.end);
-    addJob2Record(dayKey, startTs, endTs, rate, category);
+    if (!dayKey || !startTime || !endTime) return;
+    const { startTs, endTs } = job2Timestamps(dayKey, startTime, endTime);
+    addJob2Record(dayKey, startTs, endTs, category);
     state.calendarCursor = startOfMonth(parseDayKey(dayKey));
     scheduleSave();
     renderAll();
   });
+
+  const persistJob2Rates = () => {
+    const job2 = getJob2Settings();
+    const dayRate = Number(document.getElementById("job2-rate-day-default").value);
+    const nightRate = Number(document.getElementById("job2-rate-night-default").value);
+    if (Number.isFinite(dayRate) && dayRate >= 0) job2.dayRate = dayRate;
+    if (Number.isFinite(nightRate) && nightRate >= 0) job2.nightRate = nightRate;
+    markSettingsDirty();
+    scheduleSave();
+    renderAll();
+  };
+  document.getElementById("job2-rate-day-default").addEventListener("change", persistJob2Rates);
+  document.getElementById("job2-rate-night-default").addEventListener("change", persistJob2Rates);
 
   const persistJob2Discount = () => {
     const job2 = getJob2Settings();
@@ -1873,6 +2108,7 @@ function bindEvents() {
   document.getElementById("job2-inss-percent").addEventListener("change", persistJob2Discount);
   document.getElementById("job2-irrf-percent").addEventListener("change", persistJob2Discount);
   document.getElementById("job2-discount-form").addEventListener("submit", (e) => e.preventDefault());
+  document.getElementById("job2-rate-form").addEventListener("submit", (e) => e.preventDefault());
 
   const editOverlay = document.getElementById("edit-record-modal");
   document.getElementById("close-edit-record-modal").addEventListener("click", closeEditRecordModal);
