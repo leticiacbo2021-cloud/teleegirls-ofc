@@ -563,11 +563,31 @@ button:active { transform: translateY(1px); }
 .job2-shift-box label, .job2-category-box label { display: flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; cursor: pointer; }
 .job2-shift-box input[type="radio"], .job2-category-box input[type="radio"] { margin: 0; width: 1rem; height: 1rem; accent-color: var(--accent); cursor: pointer; }
 
+.job2-time-row { display: flex; gap: 0.9rem; flex-wrap: wrap; width: 100%; }
+.job2-time-row label { display: flex; flex-direction: column; gap: 0.28rem; font-size: 0.88rem; color: var(--muted); }
+.job2-time-row input { border: 1px solid var(--border); border-radius: 9px; padding: 0.42rem 0.5rem; font: inherit; background: var(--field-bg); color: var(--text); }
+.job2-shift-presets { display: flex; gap: 0.4rem; flex-wrap: wrap; width: 100%; }
+.job2-preset-btn { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
+
 .job2-rate-field { display: grid; gap: 0.28rem; color: var(--muted); font-size: 0.9rem; max-width: 220px; }
 .job2-rate-field input { border: 1px solid var(--border); border-radius: 9px; padding: 0.42rem 0.5rem; font: inherit; background: var(--field-bg); color: var(--text); }
 
 .tag.job2-category.generalista { background: var(--adulto); }
 .tag.job2-category.prep { background: var(--one); }
+
+.job2-collapsible summary.job2-summary-head {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.job2-collapsible summary.job2-summary-head::-webkit-details-marker { display: none; }
+.job2-collapsible summary.job2-summary-head h2 { margin: 0; }
+.job2-summary-arrow { display: inline-block; transition: transform 0.2s ease; color: var(--muted); flex: 0 0 auto; }
+.job2-collapsible[open] .job2-summary-arrow { transform: rotate(180deg); }
+.job2-collapsible-body { margin-top: 0.8rem; }
 
 .modal-overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; justify-content: center; align-items: center; z-index: 12; padding: 1rem; }
 .modal-overlay.hidden { display: none; }
