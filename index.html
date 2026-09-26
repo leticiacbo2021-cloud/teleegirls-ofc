@@ -36,6 +36,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script defer src="./app.js"></script>
   </head>
   <body>
@@ -350,84 +351,6 @@
         <div id="atestado-type-grid" class="atestado-type-grid"></div>
       </section>
 
-      <section class="card job2-card">
-        <div class="card-head">
-          <h2>Emprego 2 (plantões por hora)</h2>
-        </div>
-        <p class="metric-hint">Registre os plantões do seu outro trabalho, pagos por hora, para acompanhar o faturamento dele separado dos atendimentos acima.</p>
-
-        <form id="job2-form" class="job2-form">
-          <div class="job2-calendar-box">
-            <div class="job2-calendar-head">
-              <button id="job2-cal-prev" class="ghost" type="button">◀</button>
-              <h3 id="job2-cal-title"></h3>
-              <button id="job2-cal-next" class="ghost" type="button">▶</button>
-            </div>
-            <div class="weekdays">
-              <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span
-              ><span>Dom</span>
-            </div>
-            <div id="job2-calendar-grid" class="calendar-grid job2-calendar-grid"></div>
-            <input id="job2-date" type="hidden" />
-          </div>
-
-          <fieldset class="job2-shift-box">
-            <legend>Turno do plantão</legend>
-            <label><input type="radio" name="job2-shift" class="job2-shift-radio" value="mt" checked /> M+T (07h–19h)</label>
-            <label><input type="radio" name="job2-shift" class="job2-shift-radio" value="m" /> M (07h–13h)</label>
-            <label><input type="radio" name="job2-shift" class="job2-shift-radio" value="t" /> T (13h–19h)</label>
-            <label><input type="radio" name="job2-shift" class="job2-shift-radio" value="reforco" /> 17h–23h</label>
-          </fieldset>
-
-          <fieldset class="job2-category-box">
-            <legend>Função</legend>
-            <label><input type="radio" name="job2-category" class="job2-category-radio" value="generalista" checked /> Generalista</label>
-            <label><input type="radio" name="job2-category" class="job2-category-radio" value="prep" /> Prep</label>
-          </fieldset>
-
-          <label class="job2-rate-field">
-            Valor/hora (R$)
-            <input id="job2-rate" type="number" min="0" step="0.5" required />
-          </label>
-          <button type="submit" class="ghost">Registrar plantão</button>
-        </form>
-
-        <h3 id="job2-month-label" class="job2-list-title">Resumo do mês</h3>
-        <div class="job2-summary-grid">
-          <article class="metric card job2-metric">
-            <p class="metric-label">Horas no mês</p>
-            <p id="job2-month-hours" class="metric-value"></p>
-          </article>
-          <article class="metric card job2-metric">
-            <p class="metric-label">Bruto no mês</p>
-            <p id="job2-month-gross" class="metric-value"></p>
-          </article>
-          <article class="metric card job2-metric">
-            <p class="metric-label">Líquido estimado</p>
-            <p id="job2-month-net" class="metric-value"></p>
-          </article>
-        </div>
-
-        <details class="price-settings-box">
-          <summary>Ajustar percentual de desconto estimado</summary>
-          <form id="job2-discount-form" class="type-prices-form">
-            <label>
-              INSS (%)
-              <input id="job2-inss-percent" type="number" min="0" max="100" step="0.1" />
-            </label>
-            <label>
-              IRRF efetivo (%)
-              <input id="job2-irrf-percent" type="number" min="0" max="100" step="0.1" />
-            </label>
-          </form>
-          <p id="job2-net-factor-hint" class="metric-hint"></p>
-          <p class="metric-hint">Estimativa a partir dos extratos de repasse enviados. A alíquota de IRRF é progressiva e pode mudar conforme sua renda no mês — ajuste aqui se o extrato real mostrar outro valor.</p>
-        </details>
-
-        <h3 class="job2-list-title">Plantões do mês exibido acima</h3>
-        <ul id="job2-list" class="day-list"></ul>
-      </section>
-
       <section class="charts-row">
         <article class="card">
           <h2>Semana (atendimentos e faturamento)</h2>
@@ -437,6 +360,121 @@
           <h2>Mês (atendimentos e faturamento)</h2>
           <canvas id="month-chart" height="140"></canvas>
         </article>
+      </section>
+
+      <!-- ── Emprego 2: fica por último e pode ser recolhido ──────────────── -->
+      <section class="card job2-card">
+        <details class="job2-collapsible">
+          <summary class="job2-summary-head">
+            <h2>Emprego 2 (plantões por hora)</h2>
+            <span class="job2-summary-arrow" aria-hidden="true">▾</span>
+          </summary>
+          <div class="job2-collapsible-body">
+            <p class="metric-hint">Registre os plantões do seu outro trabalho para acompanhar o faturamento dele separado dos atendimentos acima. O valor é calculado sozinho: 07h–19h no valor/hora diurno e 19h–07h no valor/hora noturno, configurados em "Ajustar valor/hora" abaixo — não precisa digitar valor a cada plantão nem reenviar extrato.</p>
+
+            <details class="price-settings-box job2-import-box">
+              <summary>Importar plantões automaticamente de uma foto</summary>
+              <p class="metric-hint">Envie um print da tabela com "Data Entrada" e "Data Saída" (área do cooperado) e o app tenta reconhecer as datas e horários sozinho. Confira sempre a prévia antes de adicionar — foto com letra pequena pode confundir a leitura.</p>
+              <input id="job2-import-file" type="file" accept="image/*" />
+              <button id="job2-import-process-btn" class="ghost" type="button">Ler imagem</button>
+              <p id="job2-import-status" class="metric-hint"></p>
+              <div id="job2-import-preview"></div>
+            </details>
+
+            <form id="job2-form" class="job2-form">
+              <div class="job2-calendar-box">
+                <div class="job2-calendar-head">
+                  <button id="job2-cal-prev" class="ghost" type="button">◀</button>
+                  <h3 id="job2-cal-title"></h3>
+                  <button id="job2-cal-next" class="ghost" type="button">▶</button>
+                </div>
+                <div class="weekdays">
+                  <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span
+                  ><span>Dom</span>
+                </div>
+                <div id="job2-calendar-grid" class="calendar-grid job2-calendar-grid"></div>
+                <input id="job2-date" type="hidden" />
+              </div>
+
+              <fieldset class="job2-shift-box">
+                <legend>Horário do plantão</legend>
+                <div class="job2-time-row">
+                  <label>
+                    Entrada
+                    <input id="job2-start-time" type="time" required />
+                  </label>
+                  <label>
+                    Saída
+                    <input id="job2-end-time" type="time" required />
+                  </label>
+                </div>
+                <div class="job2-shift-presets">
+                  <button type="button" class="ghost job2-preset-btn" data-start="07:00" data-end="19:00">M+T (07h–19h)</button>
+                  <button type="button" class="ghost job2-preset-btn" data-start="07:00" data-end="13:00">M (07h–13h)</button>
+                  <button type="button" class="ghost job2-preset-btn" data-start="13:00" data-end="19:00">T (13h–19h)</button>
+                  <button type="button" class="ghost job2-preset-btn" data-start="17:00" data-end="23:00">17h–23h</button>
+                </div>
+              </fieldset>
+
+              <fieldset class="job2-category-box">
+                <legend>Função</legend>
+                <label><input type="radio" name="job2-category" class="job2-category-radio" value="generalista" checked /> Generalista</label>
+                <label><input type="radio" name="job2-category" class="job2-category-radio" value="prep" /> Prep</label>
+              </fieldset>
+
+              <button type="submit" class="ghost">Registrar plantão</button>
+            </form>
+
+            <h3 id="job2-month-label" class="job2-list-title">Resumo do mês</h3>
+            <div class="job2-summary-grid">
+              <article class="metric card job2-metric">
+                <p class="metric-label">Horas no mês</p>
+                <p id="job2-month-hours" class="metric-value"></p>
+              </article>
+              <article class="metric card job2-metric">
+                <p class="metric-label">Bruto no mês</p>
+                <p id="job2-month-gross" class="metric-value"></p>
+              </article>
+              <article class="metric card job2-metric">
+                <p class="metric-label">Líquido estimado</p>
+                <p id="job2-month-net" class="metric-value"></p>
+              </article>
+            </div>
+            <details class="price-settings-box">
+              <summary>Ajustar valor/hora (diurno e noturno)</summary>
+              <p class="metric-hint">Calculado automaticamente a partir dos extratos de repasse da COAPH enviados (07h–19h = diurno, 19h–07h = noturno). Só mude se a cooperativa atualizar a tabela — não precisa reenviar o extrato depois disso.</p>
+              <form id="job2-rate-form" class="type-prices-form">
+                <label>
+                  Diurno — 07h–19h (R$/h)
+                  <input id="job2-rate-day-default" type="number" min="0" step="0.01" />
+                </label>
+                <label>
+                  Noturno — 19h–07h (R$/h)
+                  <input id="job2-rate-night-default" type="number" min="0" step="0.01" />
+                </label>
+              </form>
+            </details>
+
+            <details class="price-settings-box">
+              <summary>Ajustar percentual de desconto estimado</summary>
+              <form id="job2-discount-form" class="type-prices-form">
+                <label>
+                  INSS (%)
+                  <input id="job2-inss-percent" type="number" min="0" max="100" step="0.1" />
+                </label>
+                <label>
+                  IRRF efetivo (%)
+                  <input id="job2-irrf-percent" type="number" min="0" max="100" step="0.1" />
+                </label>
+              </form>
+              <p id="job2-net-factor-hint" class="metric-hint"></p>
+              <p class="metric-hint">Estimativa a partir dos extratos de repasse enviados. A alíquota de IRRF é progressiva e pode mudar conforme sua renda no mês — ajuste aqui se o extrato real mostrar outro valor.</p>
+            </details>
+
+            <h3 class="job2-list-title">Plantões do mês exibido acima</h3>
+            <ul id="job2-list" class="day-list"></ul>
+          </div>
+        </details>
       </section>
     </main>
 
