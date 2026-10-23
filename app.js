@@ -1587,6 +1587,17 @@ function renderMonthGoal() {
     monthStats.total > 0
       ? TYPE_KEYS.map((t) => `${TYPE_META[t].label}: ${monthStats.counts[t]}`).join(" | ")
       : "Nenhum atendimento ainda";
+  const shiftCounts = { noturno: 0, m: 0, t: 0, reforco: 0 };
+  let plantaoTotal = 0;
+  for (const r of getMonthRecords(monthKey)) {
+    if (r.type !== "plantao") continue;
+    const cat = r.plantaoCategory && SHIFT_PRICING[r.plantaoCategory] ? r.plantaoCategory : getShiftCategoryForTs(r.ts);
+    shiftCounts[cat] += 1;
+    plantaoTotal += 1;
+  }
+  document.getElementById("month-plantao-shifts").textContent =
+    ["noturno", "m", "t", "reforco"].map((k) => `${SHIFT_PRICING[k].label}: ${shiftCounts[k]}`).join(" | ");
+  document.getElementById("month-plantao-total").textContent = `Total de plantões no mês: ${plantaoTotal}`;
   document.getElementById("month-goal-title").textContent = `Meta do mês (${monthLabel})`;
   document.getElementById("month-goal-achieved").textContent = `Acumulado: ${formatCurrency(revenue)}`;
   const goalValueEl = document.getElementById("month-goal-value");
