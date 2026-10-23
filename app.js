@@ -1595,9 +1595,9 @@ function renderMonthGoal() {
     shiftCounts[cat] += 1;
     plantaoTotal += 1;
   }
-  document.getElementById("month-plantao-shifts").textContent =
+  document.getElementById("month-plantao-shifts").textContent = String(plantaoTotal);
+  document.getElementById("month-plantao-total").textContent =
     ["noturno", "m", "t", "reforco"].map((k) => `${SHIFT_PRICING[k].label}: ${shiftCounts[k]}`).join(" | ");
-  document.getElementById("month-plantao-total").textContent = `Total de plantões no mês: ${plantaoTotal}`;
   document.getElementById("month-goal-title").textContent = `Meta do mês (${monthLabel})`;
   document.getElementById("month-goal-achieved").textContent = `Acumulado: ${formatCurrency(revenue)}`;
   const goalValueEl = document.getElementById("month-goal-value");
