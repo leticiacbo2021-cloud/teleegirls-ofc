@@ -112,6 +112,9 @@ const state = {
   saveDirtyAgain: false,
   dirtyDays: new Set(),
   dirtySettings: false,
+  dayVersions: new Map(),
+  settingsVersion: 0,
+  removedRecords: new Map(), // id -> dayKey (exclusões pendentes de envio)
   yearlySummaryYear: new Date().getFullYear(),
 };
 
@@ -119,8 +122,28 @@ const state = {
 // salvamento envie apenas essas mudanças em vez da árvore de dados inteira —
 // isso evita que uma aba com dados desatualizados apague dias que foram
 // registrados em outra aba/dispositivo.
-function markDayDirty(dayKey) { state.dirtyDays.add(dayKey); }
-function markSettingsDirty() { state.dirtySettings = true; }
+function markDayDirty(dayKey) {
+  state.dirtyDays.add(dayKey);
+  state.dayVersions.set(dayKey, (state.dayVersions.get(dayKey) || 0) + 1);
+}
+function markSettingsDirty() { state.dirtySettings = true; state.settingsVersion += 1; }
+function resetDirtyState() {
+  state.dirtyDays.clear();
+  state.dirtySettings = false;
+  state.dayVersions.clear();
+  state.removedRecords.clear();
+}
+function buildSavePayload() {
+  const days = {};
+  for (const dayKey of state.dirtyDays) {
+    const records = state.data.days[dayKey];
+    if (records && records.length) days[dayKey] = records;
+  }
+  const removedRecords = [...state.removedRecords.keys()];
+  const body = { days, removedRecords };
+  if (state.dirtySettings) body.settings = state.data.settings;
+  return body;
+}
 
 function emptyData() {
   return {
@@ -301,29 +324,27 @@ function scheduleSave() {
 async function flushSave() {
   if (!state.user) return;
   if (state.saveInFlight) { state.saveDirtyAgain = true; return; }
-  if (!state.dirtyDays.size && !state.dirtySettings) return;
+  if (!state.dirtyDays.size && !state.dirtySettings && !state.removedRecords.size) return;
   state.saveInFlight = true;
   setSyncStatus("saving", "Salvamento: enviando...");
 
-  // Envia só os dias e/ou configurações que mudaram nesta sessão — nunca a
-  // árvore de dados inteira. Assim, uma aba com dados desatualizados nunca
-  // apaga dias registrados em outra aba/dispositivo.
-  const daysPayload = {};
-  const removedDays = [];
-  for (const dayKey of state.dirtyDays) {
-    const records = state.data.days[dayKey];
-    if (records && records.length) daysPayload[dayKey] = records;
-    else removedDays.push(dayKey);
-  }
-  const body = { days: daysPayload, removedDays };
-  if (state.dirtySettings) body.settings = state.data.settings;
-
-  const savedDays = new Set(state.dirtyDays);
+  // Envia só os dias/configurações alterados. O servidor faz merge por id de
+  // registro, então nunca troca um dia inteiro por uma versão desatualizada.
+  const body = buildSavePayload();
+  const sentVersions = new Map();
+  for (const dayKey of state.dirtyDays) sentVersions.set(dayKey, state.dayVersions.get(dayKey) || 0);
+  const sentRemoved = [...state.removedRecords.keys()];
   const savedSettings = state.dirtySettings;
+  const sentSettingsVersion = state.settingsVersion;
   try {
-    await api("/data/save", { method: "POST", body });
-    for (const dayKey of savedDays) state.dirtyDays.delete(dayKey);
-    if (savedSettings) state.dirtySettings = false;
+    const resp = await api("/data/save", { method: "POST", body });
+    // Só limpa o "sujo" se nada mudou durante o envio (senão perderia a alteração).
+    for (const [dayKey, v] of sentVersions) {
+      if ((state.dayVersions.get(dayKey) || 0) === v) state.dirtyDays.delete(dayKey);
+    }
+    for (const id of sentRemoved) state.removedRecords.delete(id);
+    if (savedSettings && state.settingsVersion === sentSettingsVersion) state.dirtySettings = false;
+    adoptServerDays(resp.days, sentVersions);
     setSyncStatus("saved", "Salvamento: tudo salvo");
   } catch (err) {
     setSyncStatus("error", "Falha ao salvar. Tentando de novo...");
@@ -335,6 +356,36 @@ async function flushSave() {
       scheduleSave();
     }
   }
+}
+
+// Adota a versão mesclada do servidor para os dias recém-salvos (traz
+// registros feitos em outra aba/dispositivo) se nada mudou localmente.
+function adoptServerDays(serverDays, sentVersions) {
+  if (!serverDays || typeof serverDays !== "object") return;
+  let changed = false;
+  for (const [dayKey, records] of Object.entries(serverDays)) {
+    if ((state.dayVersions.get(dayKey) || 0) !== (sentVersions.get(dayKey) || 0)) continue;
+    const local = state.data.days[dayKey] || [];
+    const sameIds = local.length === records.length && local.every((r) => records.some((x) => x.id === r.id));
+    if (sameIds) continue;
+    state.data.days[dayKey] = records;
+    recalcPlantaoPricingForDay(dayKey); // marca sujo → novo salvamento converge
+    changed = true;
+  }
+  if (changed) { renderAll(); scheduleSave(); }
+}
+
+// Reconcilia com o servidor ao voltar para a aba (evita trabalhar com dados velhos).
+async function refreshFromServer() {
+  if (!state.user || state.saveInFlight || state.saveTimer || state.dirtyDays.size || state.dirtySettings || state.removedRecords.size) return;
+  try {
+    const payload = await api("/auth/session");
+    if (state.saveInFlight || state.saveTimer || state.dirtyDays.size || state.dirtySettings) return;
+    const fresh = normalizeData(payload.data);
+    state.data.days = fresh.days;
+    state.data.settings = fresh.settings;
+    renderAll();
+  } catch (e) {}
 }
 
 // ── Preço do Plantão (escalonado por faixa de horário) ─────────────────────
@@ -459,6 +510,7 @@ function deleteRecordById(recordId) {
     const idx = records.findIndex((r) => r.id === recordId);
     if (idx === -1) continue;
     records.splice(idx, 1);
+    state.removedRecords.set(recordId, dayKey);
     if (!records.length) delete state.data.days[dayKey];
     else recalcPlantaoPricingForDay(dayKey);
     markDayDirty(dayKey);
@@ -1916,8 +1968,7 @@ async function tryRestoreSession() {
     const payload = await api("/auth/session");
     state.user = payload.user;
     state.data = normalizeData(payload.data);
-    state.dirtyDays.clear();
-    state.dirtySettings = false;
+    resetDirtyState();
     showAppScreen();
     renderAll();
     return true;
@@ -1972,8 +2023,7 @@ function bindEvents() {
       const payload = await api("/auth/login", { method: "POST", body: { email, password } });
       state.user = payload.user;
       state.data = normalizeData(payload.data);
-      state.dirtyDays.clear();
-      state.dirtySettings = false;
+      resetDirtyState();
       showAuthMessage("");
       showAppScreen();
       renderAll();
@@ -2001,8 +2051,7 @@ function bindEvents() {
     try { await api("/auth/logout", { method: "POST" }); } catch (e) {}
     state.user = null;
     state.data = emptyData();
-    state.dirtyDays.clear();
-    state.dirtySettings = false;
+    resetDirtyState();
     showAuthScreen();
   });
 
@@ -2173,18 +2222,13 @@ function bindEvents() {
     }
   });
 
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshFromServer();
+  });
   window.addEventListener("beforeunload", () => {
-    if (state.saveTimer && (state.dirtyDays.size || state.dirtySettings)) {
+    if (state.saveTimer && (state.dirtyDays.size || state.dirtySettings || state.removedRecords.size)) {
       // Melhor esforço: tenta enviar só as mudanças pendentes antes de fechar a aba.
-      const daysPayload = {};
-      const removedDays = [];
-      for (const dayKey of state.dirtyDays) {
-        const records = state.data.days[dayKey];
-        if (records && records.length) daysPayload[dayKey] = records;
-        else removedDays.push(dayKey);
-      }
-      const body = { days: daysPayload, removedDays };
-      if (state.dirtySettings) body.settings = state.data.settings;
+      const body = buildSavePayload();
       navigator.sendBeacon?.("/api/data/save", new Blob([JSON.stringify(body)], { type: "application/json" }));
     }
   });
