@@ -159,7 +159,7 @@ exports.handler = async (event) => {
       // sessão, então dias registrados por outra aba/dispositivo entre a
       // última leitura e agora nunca são apagados.
       const hasPartialShape =
-        body.days !== undefined || body.removedDays !== undefined || body.settings !== undefined;
+        body.days !== undefined || body.removedDays !== undefined || body.removedRecords !== undefined || body.settings !== undefined;
 
       if (!hasPartialShape) {
         // Compatibilidade com clientes antigos que ainda mandam o blob inteiro.
@@ -173,20 +173,44 @@ exports.handler = async (event) => {
       if (!current.days || typeof current.days !== "object") current.days = {};
       if (!current.settings || typeof current.settings !== "object") current.settings = emptyData().settings;
 
-      if (body.days && typeof body.days === "object") {
-        for (const [dayKey, records] of Object.entries(body.days)) {
-          if (Array.isArray(records) && records.length) current.days[dayKey] = records;
+      // Merge por id de registro: registros que o servidor já tem e o cliente
+      // não conhece (outra aba/dispositivo) são preservados. Só some o que foi
+      // excluído explicitamente (removedRecords). Remoções vêm antes dos upserts
+      // (editar = remover + reinserir o mesmo id).
+      const removedIds = new Set(Array.isArray(body.removedRecords) ? body.removedRecords.map(String) : []);
+      if (removedIds.size) {
+        for (const dayKey of Object.keys(current.days)) {
+          const kept = (current.days[dayKey] || []).filter((r) => !removedIds.has(String(r.id)));
+          if (kept.length) current.days[dayKey] = kept;
+          else delete current.days[dayKey];
         }
       }
-      if (Array.isArray(body.removedDays)) {
-        for (const dayKey of body.removedDays) delete current.days[dayKey];
+      const touched = [];
+      if (body.days && typeof body.days === "object") {
+        for (const [dayKey, records] of Object.entries(body.days)) {
+          if (!Array.isArray(records) || !records.length) continue;
+          const incomingIds = new Set(records.map((r) => String(r.id)));
+          // Se um registro mudou de dia (edição), tira a cópia antiga de outros dias.
+          for (const [otherKey, otherRecs] of Object.entries(current.days)) {
+            if (otherKey === dayKey) continue;
+            const kept = otherRecs.filter((r) => !incomingIds.has(String(r.id)));
+            if (kept.length) current.days[otherKey] = kept;
+            else delete current.days[otherKey];
+          }
+          const byId = new Map((current.days[dayKey] || []).map((r) => [String(r.id), r]));
+          for (const r of records) byId.set(String(r.id), r);
+          current.days[dayKey] = [...byId.values()].sort((x, y) => x.ts - y.ts);
+          touched.push(dayKey);
+        }
       }
       if (body.settings && typeof body.settings === "object") {
         current.settings = body.settings;
       }
 
       await store.setJSON(email, current);
-      return json(200, { message: "ok" });
+      const days = {};
+      for (const k of touched) days[k] = current.days[k];
+      return json(200, { message: "ok", days });
     }
 
     return json(404, { message: "Rota não encontrada." });
