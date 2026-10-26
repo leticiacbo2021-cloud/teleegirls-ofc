@@ -70,6 +70,37 @@ function emptyData() {
   };
 }
 
+// Lê os dados do usuário. Quem tem conta SEMPRE tem dados (criados no cadastro),
+// então "null" é uma falha transitória do Blobs — nunca pode virar "dados
+// vazios", senão o próximo salvamento sobrescreve tudo com só 1 registro.
+async function readUserData(email) {
+  for (let i = 0; i < 4; i++) {
+    try {
+      const data = await dataStore().get(email, { type: "json" });
+      if (data && typeof data === "object") return data;
+    } catch (e) {
+      console.error("readUserData", e);
+    }
+    await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+  }
+  const err = new Error("DATA_UNAVAILABLE");
+  err.code = "DATA_UNAVAILABLE";
+  throw err;
+}
+
+// Cópia de segurança diária (1ª gravação do dia), para poder recuperar dados.
+async function backupOncePerDay(email, data) {
+  try {
+    const day = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+    const key = `${email}::bak-${day}`;
+    const store = dataStore();
+    const exists = await store.get(key, { type: "json" });
+    if (!exists) await store.setJSON(key, data);
+  } catch (e) {
+    console.error("backup", e);
+  }
+}
+
 exports.handler = async (event) => {
   if (!JWT_SECRET) {
     return json(500, {
@@ -117,7 +148,7 @@ exports.handler = async (event) => {
       const ok = await bcrypt.compare(password, user.passwordHash);
       if (!ok) return json(401, { message: "E-mail ou senha inválidos." });
 
-      const data = (await dataStore().get(emailKey, { type: "json" })) || emptyData();
+      const data = await readUserData(emailKey);
       const token = jwt.sign({ email: emailKey }, JWT_SECRET, { expiresIn: `${SESSION_DAYS}d` });
       return json(200, { user: { email: emailKey }, data }, { "Set-Cookie": makeCookie(token) });
     }
@@ -129,7 +160,7 @@ exports.handler = async (event) => {
     if (path === "/auth/session" && method === "GET") {
       const email = await getEmailFromRequest(event);
       if (!email) return json(401, { message: "Sem sessão ativa." });
-      const data = (await dataStore().get(email, { type: "json" })) || emptyData();
+      const data = await readUserData(email);
       return json(200, { user: { email }, data });
     }
 
@@ -169,7 +200,8 @@ exports.handler = async (event) => {
       }
 
       const store = dataStore();
-      const current = (await store.get(email, { type: "json" })) || emptyData();
+      const current = await readUserData(email);
+      await backupOncePerDay(email, current);
       if (!current.days || typeof current.days !== "object") current.days = {};
       if (!current.settings || typeof current.settings !== "object") current.settings = emptyData().settings;
 
@@ -216,6 +248,9 @@ exports.handler = async (event) => {
     return json(404, { message: "Rota não encontrada." });
   } catch (err) {
     console.error(err);
+    if (err && err.code === "DATA_UNAVAILABLE") {
+      return json(503, { message: "Dados temporariamente indisponíveis. Tente novamente." });
+    }
     return json(500, { message: "Erro interno do servidor." });
   }
 };
