@@ -303,6 +303,7 @@ async function api(path, { method = "GET", body } = {}) {
   try { payload = await res.json(); } catch (e) {}
   if (!res.ok) {
     const err = new Error(payload?.message || `Erro ${res.status}`);
+    err.status = res.status;
     throw err;
   }
   return payload || {};
@@ -1975,17 +1976,23 @@ function showAppScreen() {
 }
 
 async function tryRestoreSession() {
-  try {
-    const payload = await api("/auth/session");
-    state.user = payload.user;
-    state.data = normalizeData(payload.data);
-    resetDirtyState();
-    showAppScreen();
-    renderAll();
-    return true;
-  } catch (err) {
-    return false;
+  // Só desiste (vai pro login) se realmente não há sessão (401). Falha de rede
+  // ou do servidor tenta de novo, para nunca abrir o painel com dados vazios.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const payload = await api("/auth/session");
+      state.user = payload.user;
+      state.data = normalizeData(payload.data);
+      resetDirtyState();
+      showAppScreen();
+      renderAll();
+      return true;
+    } catch (err) {
+      if (err.status === 401) return false;
+      await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+    }
   }
+  return false;
 }
 function normalizeData(raw) {
   const base = emptyData();
