@@ -1588,11 +1588,17 @@ function renderMonthGoal() {
     monthStats.total > 0
       ? TYPE_KEYS.map((t) => `${TYPE_META[t].label}: ${monthStats.counts[t]}`).join(" | ")
       : "Nenhum atendimento ainda";
+  // Conta PLANTÕES (turnos trabalhados), não pacientes: cada combinação
+  // dia + turno com ao menos 1 atendimento de Plantão vale 1 plantão.
   const shiftCounts = { noturno: 0, m: 0, t: 0, reforco: 0 };
   let plantaoTotal = 0;
+  const seenShifts = new Set();
   for (const r of getMonthRecords(monthKey)) {
     if (r.type !== "plantao") continue;
     const cat = r.plantaoCategory && SHIFT_PRICING[r.plantaoCategory] ? r.plantaoCategory : getShiftCategoryForTs(r.ts);
+    const key = `${toDayKey(new Date(r.ts))}|${cat}`;
+    if (seenShifts.has(key)) continue;
+    seenShifts.add(key);
     shiftCounts[cat] += 1;
     plantaoTotal += 1;
   }
