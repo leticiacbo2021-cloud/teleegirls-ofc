@@ -640,4 +640,23 @@ input, select, textarea { color: var(--text); }
   .schedule-day-cell { min-height: 70px; font-size: 0.7rem; padding: 0.3rem; }
   .job2-summary-grid { grid-template-columns: 1fr; }
   .job2-calendar-grid .job2-cal-cell { min-height: 46px; font-size: 0.68rem; padding: 0.25rem; }
-}
+}.job2-value { font-size: 1rem; color: var(--text); }
+.job2-value small { font-weight: 400; color: var(--muted); font-size: 0.72rem; }
+
+/* Agenda geral */
+.agenda-legend { display: flex; gap: 0.9rem; align-items: center; flex-wrap: wrap; margin: 0 0 0.6rem; }
+.agenda-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.agenda-dot.plantao { background: var(--accent); }
+.agenda-dot.job2 { background: #f59e0b; }
+.agenda-dot.event { background: #2f9e8f; }
+.agenda-grid .agenda-cell { min-height: 48px; align-items: center; justify-content: flex-start; gap: 0.3rem; }
+.agenda-dots { display: flex; gap: 3px; justify-content: center; min-height: 8px; }
+.agenda-detail { margin-top: 0.9rem; padding-top: 0.7rem; border-top: 1px solid var(--border); }
+.agenda-detail h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+.agenda-day-list { list-style: none; margin: 0 0 0.7rem; padding: 0; display: grid; gap: 0.4rem; }
+.agenda-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem; }
+.agenda-item-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.agenda-actions { display: flex; gap: 0.3rem; }
+.agenda-form { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.agenda-form input[type="text"] { flex: 1 1 160px; min-width: 0; border: 1px solid var(--border); border-radius: 9px; padding: 0.42rem 0.5rem; font: inherit; background: var(--field-bg); color: var(--text); }
+.agenda-form input[type="time"] { border: 1px solid var(--border); border-radius: 9px; padding: 0.42rem 0.5rem; font: inherit; background: var(--field-bg); color: var(--text); }
