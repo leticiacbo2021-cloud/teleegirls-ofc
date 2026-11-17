@@ -92,6 +92,10 @@ const state = {
   selectedDateKey: toDayKey(new Date()),
   calendarCursor: startOfMonth(new Date()),
   editingRecordId: null,
+  editingJob2: null,
+  agendaCursor: startOfMonth(new Date()),
+  agendaSelected: toDayKey(new Date()),
+  agendaEditingId: null,
   // Turno travado manualmente para o registro do Plantão via botão rápido.
   // null = automático, calculado pelo horário atual (getShiftCategoryForTs).
   manualShiftOverride: null,
@@ -167,6 +171,8 @@ function emptyData() {
         inssPercent: JOB2_DEFAULT_INSS_PERCENT,
         irrfPercent: JOB2_DEFAULT_IRRF_PERCENT,
       },
+      // Agenda geral: compromissos avulsos, dayKey -> [{ id, title, time }].
+      agenda: { events: {} },
     },
   };
 }
@@ -1858,10 +1864,16 @@ function renderJob2() {
       <span>${toTimeInputValue(record.startTs)}–${toTimeInputValue(record.endTs)}</span>
       <span class="tag job2-category ${category}">${JOB2_CATEGORY_META[category]}</span>
       <span class="metric-hint">${hours.toFixed(1).replace(".", ",")}h total (${dayHours.toFixed(1).replace(".", ",")}h diurno · ${nightHours.toFixed(1).replace(".", ",")}h noturno)</span>
-      <span class="metric-hint">${formatCurrency(gross)}</span>
+      <strong class="job2-value">${formatCurrency(gross)} <small>bruto</small></strong>
+      <span class="metric-hint">≈ ${formatCurrency(computeJob2NetFromGross(gross))} líquido</span>
     `;
     const actions = document.createElement("div");
     actions.className = "day-actions";
+    const editBtn = document.createElement("button");
+    editBtn.className = "ghost day-action-btn";
+    editBtn.type = "button";
+    editBtn.textContent = "Editar";
+    editBtn.addEventListener("click", () => openJob2EditModal(record.dayKey, record.id));
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "ghost day-action-btn";
     deleteBtn.type = "button";
@@ -1871,11 +1883,204 @@ function renderJob2() {
       scheduleSave();
       renderJob2();
     });
-    actions.append(deleteBtn);
+    actions.append(editBtn, deleteBtn);
     row.append(main, actions);
     li.appendChild(row);
     list.appendChild(li);
   }
+}
+
+
+// ── Editar plantão do Emprego 2 ─────────────────────────────────────────────
+function openJob2EditModal(dayKey, recordId) {
+  const rec = getJob2Records(dayKey).find((r) => r.id === recordId);
+  if (!rec) return;
+  state.editingJob2 = { dayKey, id: recordId };
+  document.getElementById("job2-edit-date").value = dayKey;
+  document.getElementById("job2-edit-start").value = toTimeInputValue(rec.startTs);
+  document.getElementById("job2-edit-end").value = toTimeInputValue(rec.endTs);
+  const radio = document.querySelector(`input[name="job2-edit-category"][value="${rec.category === "prep" ? "prep" : "generalista"}"]`);
+  if (radio) radio.checked = true;
+  const overlay = document.getElementById("job2-edit-modal");
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+}
+function closeJob2EditModal() {
+  state.editingJob2 = null;
+  const overlay = document.getElementById("job2-edit-modal");
+  overlay.classList.add("hidden");
+  overlay.setAttribute("aria-hidden", "true");
+}
+function saveJob2Edit() {
+  const cur = state.editingJob2;
+  if (!cur) return;
+  const newDay = document.getElementById("job2-edit-date").value;
+  const start = document.getElementById("job2-edit-start").value;
+  const end = document.getElementById("job2-edit-end").value;
+  const category = document.querySelector('input[name="job2-edit-category"]:checked')?.value;
+  if (!newDay || !start || !end) return;
+  deleteJob2Record(cur.dayKey, cur.id);
+  const { startTs, endTs } = job2Timestamps(newDay, start, end);
+  const rec = addJob2Record(newDay, startTs, endTs, category);
+  rec.id = cur.id;
+  state.calendarCursor = startOfMonth(parseDayKey(newDay));
+  scheduleSave();
+  renderAll();
+  closeJob2EditModal();
+}
+
+// ── Agenda geral ────────────────────────────────────────────────────────────
+// Visão única do mês: pontinhos coloridos (plantão, Emprego 2, compromisso).
+// Os detalhes só aparecem ao clicar no dia, para não poluir o calendário.
+// Plantões vêm do que já existe (atendimentos de Plantão + Escala planejada +
+// Emprego 2); só os compromissos são cadastrados aqui (settings.agenda).
+function getAgendaEvents(dayKey) {
+  const ev = state.data.settings.agenda?.events?.[dayKey];
+  return Array.isArray(ev) ? ev : [];
+}
+function getAgendaPlantaoShifts(dayKey) {
+  const done = new Set();
+  for (const r of state.data.days[dayKey] || []) {
+    if (r.type === "plantao" && SHIFT_PRICING[r.plantaoCategory]) done.add(r.plantaoCategory);
+  }
+  const planned = getPlantaoPlanForDay(dayKey).filter((s) => !done.has(s));
+  return {
+    done: SCHEDULE_SHIFT_ORDER.filter((s) => done.has(s)),
+    planned: SCHEDULE_SHIFT_ORDER.filter((s) => planned.includes(s)),
+  };
+}
+function agendaDayKinds(dayKey) {
+  const s = getAgendaPlantaoShifts(dayKey);
+  return {
+    plantao: s.done.length + s.planned.length > 0,
+    job2: getJob2Records(dayKey).length > 0,
+    event: getAgendaEvents(dayKey).length > 0,
+  };
+}
+function renderAgenda() {
+  const grid = document.getElementById("agenda-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  const cursor = state.agendaCursor;
+  const y = cursor.getFullYear();
+  const m = cursor.getMonth();
+  const first = new Date(y, m, 1);
+  const start = new Date(y, m, 1 - ((first.getDay() + 6) % 7));
+  const title = first.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  document.getElementById("agenda-title").textContent = title.charAt(0).toUpperCase() + title.slice(1);
+  const todayKey = toDayKey(new Date());
+  for (let i = 0; i < 42; i += 1) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + i);
+    const key = toDayKey(date);
+    const kinds = agendaDayKinds(key);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "day-cell agenda-cell";
+    if (date.getMonth() !== m) btn.classList.add("other-month");
+    if (key === state.agendaSelected) btn.classList.add("selected");
+    if (key === todayKey) btn.classList.add("today");
+    const dots = ["plantao", "job2", "event"].filter((k) => kinds[k]).map((k) => `<span class="agenda-dot ${k}"></span>`).join("");
+    btn.innerHTML = `<span class="num">${date.getDate()}</span><span class="agenda-dots">${dots}</span>`;
+    btn.addEventListener("click", () => {
+      state.agendaSelected = key;
+      state.agendaEditingId = null;
+      renderAgenda();
+    });
+    grid.appendChild(btn);
+  }
+  renderAgendaDay();
+}
+function renderAgendaDay() {
+  const key = state.agendaSelected;
+  document.getElementById("agenda-day-title").textContent = formatDateLong(key);
+  const list = document.getElementById("agenda-day-list");
+  list.innerHTML = "";
+  const addRow = (kind, text, actions) => {
+    const li = document.createElement("li");
+    li.className = "agenda-item";
+    li.innerHTML = `<span class="agenda-dot ${kind}"></span><span class="agenda-item-text">${escapeHtml(text)}</span>`;
+    if (actions) li.appendChild(actions);
+    list.appendChild(li);
+  };
+  const s = getAgendaPlantaoShifts(key);
+  s.done.forEach((sh) => addRow("plantao", `Plantão ${SHIFT_PRICING[sh].label} (atendido)`));
+  s.planned.forEach((sh) => addRow("plantao", `Plantão ${SHIFT_PRICING[sh].label} (planejado)`));
+  getJob2Records(key).slice().sort((a, b) => a.startTs - b.startTs).forEach((r) =>
+    addRow("job2", `Emprego 2 · ${toTimeInputValue(r.startTs)}–${toTimeInputValue(r.endTs)}`));
+  getAgendaEvents(key).slice().sort((a, b) => (a.time || "99").localeCompare(b.time || "99")).forEach((ev) => {
+    const actions = document.createElement("span");
+    actions.className = "agenda-actions";
+    const edit = document.createElement("button");
+    edit.type = "button"; edit.className = "ghost day-action-btn"; edit.textContent = "Editar";
+    edit.addEventListener("click", () => {
+      state.agendaEditingId = ev.id;
+      document.getElementById("agenda-input-title").value = ev.title;
+      document.getElementById("agenda-input-time").value = ev.time || "";
+      document.getElementById("agenda-cancel-edit").classList.remove("hidden");
+      document.getElementById("agenda-input-title").focus();
+    });
+    const del = document.createElement("button");
+    del.type = "button"; del.className = "ghost day-action-btn"; del.textContent = "Excluir";
+    del.addEventListener("click", () => { deleteAgendaEvent(key, ev.id); });
+    actions.append(edit, del);
+    addRow("event", `${ev.time ? ev.time + " · " : ""}${ev.title}`, actions);
+  });
+  if (!list.children.length) {
+    const li = document.createElement("li");
+    li.className = "metric-hint";
+    li.textContent = "Nada neste dia.";
+    list.appendChild(li);
+  }
+}
+function ensureAgenda() {
+  if (!state.data.settings.agenda) state.data.settings.agenda = { events: {} };
+  if (!state.data.settings.agenda.events) state.data.settings.agenda.events = {};
+  return state.data.settings.agenda.events;
+}
+function deleteAgendaEvent(dayKey, id) {
+  const events = ensureAgenda();
+  events[dayKey] = (events[dayKey] || []).filter((e) => e.id !== id);
+  if (!events[dayKey].length) delete events[dayKey];
+  markSettingsDirty(); scheduleSave(); renderAgenda();
+}
+function saveAgendaEvent(title, time) {
+  const events = ensureAgenda();
+  const key = state.agendaSelected;
+  if (state.agendaEditingId) {
+    for (const [d, arr] of Object.entries(events)) {
+      const idx = arr.findIndex((e) => e.id === state.agendaEditingId);
+      if (idx !== -1) { arr.splice(idx, 1); if (!arr.length) delete events[d]; break; }
+    }
+  }
+  if (!events[key]) events[key] = [];
+  events[key].push({ id: state.agendaEditingId || createId(), title, time: time || "" });
+  state.agendaEditingId = null;
+  markSettingsDirty(); scheduleSave(); renderAgenda();
+}
+function setupAgendaControls() {
+  document.getElementById("agenda-prev").addEventListener("click", () => {
+    state.agendaCursor = new Date(state.agendaCursor.getFullYear(), state.agendaCursor.getMonth() - 1, 1);
+    renderAgenda();
+  });
+  document.getElementById("agenda-next").addEventListener("click", () => {
+    state.agendaCursor = new Date(state.agendaCursor.getFullYear(), state.agendaCursor.getMonth() + 1, 1);
+    renderAgenda();
+  });
+  const form = document.getElementById("agenda-form");
+  const reset = () => {
+    form.reset();
+    state.agendaEditingId = null;
+    document.getElementById("agenda-cancel-edit").classList.add("hidden");
+  };
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = document.getElementById("agenda-input-title").value.trim();
+    if (!title) return;
+    saveAgendaEvent(title, document.getElementById("agenda-input-time").value);
+    reset();
+  });
+  document.getElementById("agenda-cancel-edit").addEventListener("click", reset);
 }
 
 function renderAll() {
@@ -1890,6 +2095,7 @@ function renderAll() {
   renderMonthGoal();
   renderSchedule();
   renderAtestadoSummary();
+  renderAgenda();
   renderJob2();
   renderCharts(metrics);
   const prices = getTypePrices();
@@ -2018,11 +2224,13 @@ function normalizeData(raw) {
     // Registros antigos guardavam valor/hora por plantão; a partir de agora
     // o valor/hora é único e configurado aqui, então plantões antigos passam
     // a usar automaticamente este valor também.
-    dayRate: Number.isFinite(Number(rawJob2?.dayRate)) ? Number(rawJob2.dayRate) : JOB2_DEFAULT_DAY_RATE,
-    nightRate: Number.isFinite(Number(rawJob2?.nightRate)) ? Number(rawJob2.nightRate) : JOB2_DEFAULT_NIGHT_RATE,
+    dayRate: Number(rawJob2?.dayRate) > 0 ? Number(rawJob2.dayRate) : JOB2_DEFAULT_DAY_RATE,
+    nightRate: Number(rawJob2?.nightRate) > 0 ? Number(rawJob2.nightRate) : JOB2_DEFAULT_NIGHT_RATE,
     inssPercent: Number.isFinite(Number(rawJob2?.inssPercent)) ? Number(rawJob2.inssPercent) : JOB2_DEFAULT_INSS_PERCENT,
     irrfPercent: Number.isFinite(Number(rawJob2?.irrfPercent)) ? Number(rawJob2.irrfPercent) : JOB2_DEFAULT_IRRF_PERCENT,
   };
+  const rawAgendaEv = raw.settings?.agenda?.events;
+  base.settings.agenda = { events: rawAgendaEv && typeof rawAgendaEv === "object" ? rawAgendaEv : {} };
   return base;
 }
 
@@ -2159,8 +2367,8 @@ function bindEvents() {
     const job2 = getJob2Settings();
     const dayRate = Number(document.getElementById("job2-rate-day-default").value);
     const nightRate = Number(document.getElementById("job2-rate-night-default").value);
-    if (Number.isFinite(dayRate) && dayRate >= 0) job2.dayRate = dayRate;
-    if (Number.isFinite(nightRate) && nightRate >= 0) job2.nightRate = nightRate;
+    if (Number.isFinite(dayRate) && dayRate > 0) job2.dayRate = dayRate;
+    if (Number.isFinite(nightRate) && nightRate > 0) job2.nightRate = nightRate;
     markSettingsDirty();
     scheduleSave();
     renderAll();
@@ -2183,6 +2391,9 @@ function bindEvents() {
   document.getElementById("job2-discount-form").addEventListener("submit", (e) => e.preventDefault());
   document.getElementById("job2-rate-form").addEventListener("submit", (e) => e.preventDefault());
 
+  document.getElementById("close-job2-edit-modal").addEventListener("click", closeJob2EditModal);
+  document.getElementById("job2-edit-form").addEventListener("submit", (e) => { e.preventDefault(); saveJob2Edit(); });
+  document.getElementById("job2-edit-modal").addEventListener("click", (e) => { if (e.target.id === "job2-edit-modal") closeJob2EditModal(); });
   const editOverlay = document.getElementById("edit-record-modal");
   document.getElementById("close-edit-record-modal").addEventListener("click", closeEditRecordModal);
   editOverlay.addEventListener("click", (e) => { if (e.target === editOverlay) closeEditRecordModal(); });
@@ -2267,6 +2478,7 @@ async function initApp() {
   setupShiftOverride();
   setupScheduleControls();
   setupJob2Controls();
+  setupAgendaControls();
   bindEvents();
   if (!(await tryRestoreSession())) showAuthScreen();
 }
