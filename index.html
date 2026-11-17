@@ -367,6 +367,42 @@
         </article>
       </section>
 
+      <!-- ── Agenda geral: plantões + compromissos, só pontinhos no calendário ── -->
+      <section class="card agenda-card">
+        <details class="job2-collapsible" open>
+          <summary class="job2-summary-head">
+            <h2>Agenda geral</h2>
+            <span class="job2-summary-arrow" aria-hidden="true">▾</span>
+          </summary>
+          <div class="job2-collapsible-body">
+            <p class="metric-hint agenda-legend">
+              <span class="agenda-dot plantao"></span> Plantão
+              <span class="agenda-dot job2"></span> Emprego 2
+              <span class="agenda-dot event"></span> Compromisso
+            </p>
+            <div class="job2-calendar-head">
+              <button id="agenda-prev" class="ghost" type="button">◀</button>
+              <h3 id="agenda-title"></h3>
+              <button id="agenda-next" class="ghost" type="button">▶</button>
+            </div>
+            <div class="weekdays">
+              <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span>
+            </div>
+            <div id="agenda-grid" class="calendar-grid agenda-grid"></div>
+            <div class="agenda-detail">
+              <h3 id="agenda-day-title"></h3>
+              <ul id="agenda-day-list" class="agenda-day-list"></ul>
+              <form id="agenda-form" class="agenda-form">
+                <input id="agenda-input-title" type="text" maxlength="80" placeholder="Novo compromisso" required />
+                <input id="agenda-input-time" type="time" aria-label="Hora (opcional)" />
+                <button type="submit" class="ghost">Adicionar</button>
+                <button id="agenda-cancel-edit" type="button" class="ghost hidden">Cancelar</button>
+              </form>
+            </div>
+          </div>
+        </details>
+      </section>
+
       <!-- ── Emprego 2: fica por último e pode ser recolhido ──────────────── -->
       <section class="card job2-card">
         <details class="job2-collapsible">
@@ -482,6 +518,27 @@
         </details>
       </section>
     </main>
+
+    <!-- ── Modal: editar plantão do Emprego 2 ───────────────────────────── -->
+    <div id="job2-edit-modal" class="modal-overlay hidden" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true">
+        <div class="modal-head">
+          <h2>Editar plantão (Emprego 2)</h2>
+          <button id="close-job2-edit-modal" class="ghost" type="button">Fechar</button>
+        </div>
+        <form id="job2-edit-form" class="manual-form">
+          <label>Data <input id="job2-edit-date" type="date" required /></label>
+          <label>Entrada <input id="job2-edit-start" type="time" required /></label>
+          <label>Saída <input id="job2-edit-end" type="time" required /></label>
+          <fieldset class="job2-category-box">
+            <legend>Função</legend>
+            <label><input type="radio" name="job2-edit-category" value="generalista" checked /> Generalista</label>
+            <label><input type="radio" name="job2-edit-category" value="prep" /> Prep</label>
+          </fieldset>
+          <button type="submit">Salvar</button>
+        </form>
+      </div>
+    </div>
 
     <!-- ── Modal: editar atendimento ────────────────────────────────────── -->
     <div id="edit-record-modal" class="modal-overlay hidden" aria-hidden="true">
