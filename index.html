@@ -106,17 +106,27 @@
         <div class="session-bar">
           <p id="session-user-label"></p>
           <p id="sync-status-label" class="sync-status idle">Salvamento: aguardando</p>
+          <button id="open-security-btn" class="ghost" type="button">Configurações</button>
           <button id="open-yearly-summary-btn" class="ghost" type="button">Resumo anual</button>
           <button id="change-password-btn" class="ghost" type="button">Trocar senha</button>
           <button id="logout-btn" class="ghost" type="button">Sair</button>
         </div>
-        <div>
+        <div id="hero-title">
           <p class="eyebrow">Painel diário</p>
           <h1>Controle de atendimentos e faturamento</h1>
           <p class="subtitle">Registre o atendimento pelo tipo, acompanhe o faturamento do dia e do mês.</p>
         </div>
       </header>
 
+      <nav class="main-nav" id="main-nav" aria-label="Áreas do painel">
+        <span class="main-nav-brand">Minha rotina</span>
+        <button type="button" class="main-nav-btn active" data-view="atendimentos">Atendimentos</button>
+        <button type="button" class="main-nav-btn" data-view="escala">Escala</button>
+        <button type="button" class="main-nav-btn" data-view="agenda">Agenda</button>
+        <button type="button" class="main-nav-btn" data-view="emprego2">Emprego 2</button>
+      </nav>
+
+      <div id="view-atendimentos" class="app-view" data-view="atendimentos">
       <section class="actions card">
         <div class="card-head">
           <h2>Registrar atendimento</h2>
@@ -315,28 +325,6 @@
         </article>
       </section>
 
-      <section class="card schedule-card">
-        <div class="card-head">
-          <h2>Escala de plantões</h2>
-          <div class="schedule-view-toggle">
-            <button id="schedule-view-week" class="ghost schedule-view-btn" type="button">Semana</button>
-            <button id="schedule-view-month" class="ghost schedule-view-btn active" type="button">Mês</button>
-          </div>
-        </div>
-        <p class="metric-hint">Visualize a escala por semana ou mês e clique em um dia para ver os turnos de Plantão.</p>
-        <p class="metric-hint schedule-legend">Turno com fundo colorido = já atendido. Turno tracejado = planejado (ainda não atendido).</p>
-        <div class="schedule-nav">
-          <button id="schedule-prev" class="ghost" type="button">◀</button>
-          <h3 id="schedule-title"></h3>
-          <button id="schedule-next" class="ghost" type="button">▶</button>
-        </div>
-        <div class="weekdays">
-          <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span
-          ><span>Dom</span>
-        </div>
-        <div id="schedule-grid" class="schedule-grid"></div>
-        <div id="schedule-detail" class="schedule-detail"></div>
-      </section>
 
       <section class="card atestado-summary-card">
         <h2>Atendimentos com e sem atestado no mês</h2>
@@ -367,157 +355,194 @@
         </article>
       </section>
 
-      <!-- ── Agenda geral: plantões + compromissos, só pontinhos no calendário ── -->
+
+      </div>
+      <div id="view-escala" class="app-view hidden" data-view="escala">
+      <section class="card schedule-card">
+        <div class="card-head">
+          <h2>Escala de plantões</h2>
+          <div class="schedule-view-toggle">
+            <button id="schedule-view-week" class="ghost schedule-view-btn" type="button">Semana</button>
+            <button id="schedule-view-month" class="ghost schedule-view-btn active" type="button">Mês</button>
+          </div>
+        </div>
+        <p class="metric-hint">Visualize a escala por semana ou mês e clique em um dia para ver os turnos de Plantão.</p>
+        <p class="metric-hint schedule-legend">✓ Turno preenchido = já realizado · Turno tracejado = planejado (ainda não atendido).</p>
+        <div class="schedule-nav">
+          <button id="schedule-prev" class="ghost" type="button">◀</button>
+          <h3 id="schedule-title"></h3>
+          <button id="schedule-next" class="ghost" type="button">▶</button>
+        </div>
+        <div class="weekdays">
+          <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span
+          ><span>Dom</span>
+        </div>
+        <div id="schedule-grid" class="schedule-grid"></div>
+        <div id="schedule-detail" class="schedule-detail"></div>
+      </section>
+      </div>
+      <div id="view-agenda" class="app-view hidden" data-view="agenda">
       <section class="card agenda-card">
-        <details class="job2-collapsible" open>
-          <summary class="job2-summary-head">
-            <h2>Agenda geral</h2>
-            <span class="job2-summary-arrow" aria-hidden="true">▾</span>
-          </summary>
-          <div class="job2-collapsible-body">
-            <p class="metric-hint agenda-legend">
-              <span class="agenda-dot plantao"></span> Plantão
-              <span class="agenda-dot job2"></span> Emprego 2
-              <span class="agenda-dot event"></span> Compromisso
-            </p>
+        <div class="card-head">
+          <h2>Agenda</h2>
+          <div class="schedule-view-toggle">
+            <button id="agenda-view-month" class="ghost schedule-view-btn active" type="button">Mês</button>
+            <button id="agenda-view-week" class="ghost schedule-view-btn" type="button">Semana</button>
+          </div>
+        </div>
+        <p class="metric-hint agenda-legend">
+          <span>🩺 Plantão</span><span>💼 Emprego 2</span><span>💕 Compromisso</span>
+        </p>
+        <div class="agenda-layout">
+          <div class="agenda-cal-col">
             <div class="job2-calendar-head">
-              <button id="agenda-prev" class="ghost" type="button">◀</button>
+              <button id="agenda-prev" class="ghost" type="button" aria-label="Anterior">◀</button>
               <h3 id="agenda-title"></h3>
-              <button id="agenda-next" class="ghost" type="button">▶</button>
+              <button id="agenda-next" class="ghost" type="button" aria-label="Próximo">▶</button>
             </div>
-            <div class="weekdays">
+            <div id="agenda-weekdays" class="weekdays">
               <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span>
             </div>
             <div id="agenda-grid" class="calendar-grid agenda-grid"></div>
-            <div class="agenda-detail">
-              <h3 id="agenda-day-title"></h3>
-              <ul id="agenda-day-list" class="agenda-day-list"></ul>
-              <form id="agenda-form" class="agenda-form">
-                <input id="agenda-input-title" type="text" maxlength="80" placeholder="Novo compromisso" required />
-                <input id="agenda-input-time" type="time" aria-label="Hora (opcional)" />
-                <button type="submit" class="ghost">Adicionar</button>
-                <button id="agenda-cancel-edit" type="button" class="ghost hidden">Cancelar</button>
-              </form>
-            </div>
           </div>
-        </details>
+          <aside class="agenda-next" aria-label="Próximos compromissos">
+            <h3>Próximos</h3>
+            <ul id="agenda-next-list" class="agenda-next-list"></ul>
+          </aside>
+        </div>
+        <div class="agenda-detail">
+          <h3 id="agenda-day-title"></h3>
+          <ul id="agenda-day-list" class="agenda-day-list"></ul>
+          <details id="agenda-add-box" class="add-box">
+          <summary>＋ Adicionar compromisso</summary>
+          <form id="agenda-form" class="agenda-form">
+            <select id="agenda-kind" aria-label="Tipo">
+              <option value="event">Compromisso</option>
+              <option value="job2">Plantão Emprego 2</option>
+            </select>
+            <input id="agenda-input-title" type="text" maxlength="80" placeholder="Novo compromisso" required />
+            <input id="agenda-input-time" type="time" aria-label="Hora (opcional)" />
+            <span id="agenda-job2-fields" class="agenda-job2-fields hidden">
+              <label>Início <input id="agenda-job2-start" type="time" value="07:00" /></label>
+              <label>Fim <input id="agenda-job2-end" type="time" value="19:00" /></label>
+              <select id="agenda-job2-cat" aria-label="Função">
+                <option value="generalista">Generalista</option>
+                <option value="prep">Prep</option>
+              </select>
+            </span>
+            <button type="submit" class="ghost">Adicionar</button>
+            <button id="agenda-cancel-edit" type="button" class="ghost hidden">Cancelar</button>
+          </form>
+          </details>
+        </div>
       </section>
-
-      <!-- ── Emprego 2: fica por último e pode ser recolhido ──────────────── -->
+      </div>
+      <div id="view-emprego2" class="app-view hidden" data-view="emprego2">
       <section class="card job2-card">
-        <details class="job2-collapsible">
-          <summary class="job2-summary-head">
-            <h2>Emprego 2 (plantões por hora)</h2>
-            <span class="job2-summary-arrow" aria-hidden="true">▾</span>
-          </summary>
-          <div class="job2-collapsible-body">
-            <p class="metric-hint">Registre os plantões do seu outro trabalho para acompanhar o faturamento dele separado dos atendimentos acima. O valor é calculado sozinho: 07h–19h no valor/hora diurno e 19h–07h no valor/hora noturno, configurados em "Ajustar valor/hora" abaixo — não precisa digitar valor a cada plantão nem reenviar extrato.</p>
-
-            <details class="price-settings-box job2-import-box">
-              <summary>Importar plantões automaticamente de uma foto</summary>
-              <p class="metric-hint">Envie um print da tabela com "Data Entrada" e "Data Saída" (área do cooperado) e o app tenta reconhecer as datas e horários sozinho. Confira sempre a prévia antes de adicionar — foto com letra pequena pode confundir a leitura.</p>
-              <input id="job2-import-file" type="file" accept="image/*" />
-              <button id="job2-import-process-btn" class="ghost" type="button">Ler imagem</button>
-              <p id="job2-import-status" class="metric-hint"></p>
-              <div id="job2-import-preview"></div>
-            </details>
-
-            <form id="job2-form" class="job2-form">
-              <div class="job2-calendar-box">
-                <div class="job2-calendar-head">
-                  <button id="job2-cal-prev" class="ghost" type="button">◀</button>
-                  <h3 id="job2-cal-title"></h3>
-                  <button id="job2-cal-next" class="ghost" type="button">▶</button>
-                </div>
-                <div class="weekdays">
-                  <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span
-                  ><span>Dom</span>
-                </div>
-                <div id="job2-calendar-grid" class="calendar-grid job2-calendar-grid"></div>
-                <input id="job2-date" type="hidden" />
-              </div>
-
-              <fieldset class="job2-shift-box">
-                <legend>Horário do plantão</legend>
-                <div class="job2-time-row">
-                  <label>
-                    Entrada
-                    <input id="job2-start-time" type="time" required />
-                  </label>
-                  <label>
-                    Saída
-                    <input id="job2-end-time" type="time" required />
-                  </label>
-                </div>
-                <div class="job2-shift-presets">
-                  <button type="button" class="ghost job2-preset-btn" data-start="07:00" data-end="19:00">M+T (07h–19h)</button>
-                  <button type="button" class="ghost job2-preset-btn" data-start="07:00" data-end="13:00">M (07h–13h)</button>
-                  <button type="button" class="ghost job2-preset-btn" data-start="13:00" data-end="19:00">T (13h–19h)</button>
-                  <button type="button" class="ghost job2-preset-btn" data-start="17:00" data-end="23:00">17h–23h</button>
-                </div>
-              </fieldset>
-
-              <fieldset class="job2-category-box">
-                <legend>Função</legend>
-                <label><input type="radio" name="job2-category" class="job2-category-radio" value="generalista" checked /> Generalista</label>
-                <label><input type="radio" name="job2-category" class="job2-category-radio" value="prep" /> Prep</label>
-              </fieldset>
-
-              <button type="submit" class="ghost">Registrar plantão</button>
-            </form>
-
-            <h3 id="job2-month-label" class="job2-list-title">Resumo do mês</h3>
-            <div class="job2-summary-grid">
-              <article class="metric card job2-metric">
-                <p class="metric-label">Horas no mês</p>
-                <p id="job2-month-hours" class="metric-value"></p>
-              </article>
-              <article class="metric card job2-metric">
-                <p class="metric-label">Bruto no mês</p>
-                <p id="job2-month-gross" class="metric-value"></p>
-              </article>
-              <article class="metric card job2-metric">
-                <p class="metric-label">Líquido estimado</p>
-                <p id="job2-month-net" class="metric-value"></p>
-              </article>
-            </div>
-            <details class="price-settings-box">
-              <summary>Ajustar valor/hora (diurno e noturno)</summary>
-              <p class="metric-hint">Calculado automaticamente a partir dos extratos de repasse da COAPH enviados (07h–19h = diurno, 19h–07h = noturno). Só mude se a cooperativa atualizar a tabela — não precisa reenviar o extrato depois disso.</p>
-              <form id="job2-rate-form" class="type-prices-form">
-                <label>
-                  Diurno — 07h–19h (R$/h)
-                  <input id="job2-rate-day-default" type="number" min="0" step="0.01" />
-                </label>
-                <label>
-                  Noturno — 19h–07h (R$/h)
-                  <input id="job2-rate-night-default" type="number" min="0" step="0.01" />
-                </label>
-              </form>
-            </details>
-
-            <details class="price-settings-box">
-              <summary>Ajustar percentual de desconto estimado</summary>
-              <form id="job2-discount-form" class="type-prices-form">
-                <label>
-                  INSS (%)
-                  <input id="job2-inss-percent" type="number" min="0" max="100" step="0.1" />
-                </label>
-                <label>
-                  IRRF efetivo (%)
-                  <input id="job2-irrf-percent" type="number" min="0" max="100" step="0.1" />
-                </label>
-              </form>
-              <p id="job2-net-factor-hint" class="metric-hint"></p>
-              <p class="metric-hint">Estimativa a partir dos extratos de repasse enviados. A alíquota de IRRF é progressiva e pode mudar conforme sua renda no mês — ajuste aqui se o extrato real mostrar outro valor.</p>
-            </details>
-
-            <h3 class="job2-list-title">Plantões do mês exibido acima</h3>
-            <ul id="job2-list" class="day-list"></ul>
+        <div class="card-head">
+          <h2>Emprego 2</h2>
+          <div class="job2-month-nav">
+            <button id="job2-month-prev" class="ghost" type="button" aria-label="Mês anterior">◀</button>
+            <h3 id="job2-month-label" class="job2-month-title"></h3>
+            <button id="job2-month-next" class="ghost" type="button" aria-label="Próximo mês">▶</button>
           </div>
+        </div>
+
+        <div class="job2-summary-grid">
+          <article class="metric card job2-metric">
+            <p class="metric-label">Plantões</p>
+            <p id="job2-month-shifts" class="metric-value"></p>
+          </article>
+          <article class="metric card job2-metric">
+            <p class="metric-label">Horas</p>
+            <p id="job2-month-hours" class="metric-value"></p>
+          </article>
+          <article class="metric card job2-metric">
+            <p class="metric-label">Total bruto</p>
+            <p id="job2-month-gross" class="metric-value"></p>
+          </article>
+          <article class="metric card job2-metric">
+            <p class="metric-label">Total líquido</p>
+            <p id="job2-month-net" class="metric-value"></p>
+          </article>
+        </div>
+
+        <h3 class="job2-list-title">Plantões do mês</h3>
+        <div class="job2-table-wrap">
+          <table class="job2-table">
+            <thead><tr><th>Data</th><th>Horário</th><th>Horas</th><th>Valor</th><th></th></tr></thead>
+            <tbody id="job2-list"></tbody>
+          </table>
+        </div>
+
+        <details id="job2-add-box" class="add-box">
+        <summary>＋ Adicionar plantão</summary>
+        <form id="job2-add-form" class="job2-add-form">
+          <label>Data <input id="job2-add-date" type="date" required /></label>
+          <label>Entrada <input id="job2-add-start" type="time" value="07:00" required /></label>
+          <label>Saída <input id="job2-add-end" type="time" value="19:00" required /></label>
+          <label>Função
+            <select id="job2-add-cat">
+              <option value="generalista">Generalista</option>
+              <option value="prep">Prep</option>
+            </select>
+          </label>
+          <button type="submit" class="ghost">Adicionar plantão</button>
+        </form>
+        </details>
+
+        <details class="price-settings-box job2-import-box">
+          <summary>Importar plantões de uma foto</summary>
+          <p class="metric-hint">Envie um print da tabela com "Data Entrada" e "Data Saída" (área do cooperado). Confira sempre a prévia antes de adicionar.</p>
+          <input id="job2-import-file" type="file" accept="image/*" />
+          <button id="job2-import-process-btn" class="ghost" type="button">Ler imagem</button>
+          <p id="job2-import-status" class="metric-hint"></p>
+          <div id="job2-import-preview"></div>
+        </details>
+
+        <details class="price-settings-box">
+          <summary>Valor/hora e descontos</summary>
+          <p class="metric-hint">Diurno 07h–19h, noturno 19h–07h. Só mude se a cooperativa atualizar a tabela.</p>
+          <form id="job2-rate-form" class="type-prices-form">
+            <label>
+              Diurno — 07h–19h (R$/h)
+              <input id="job2-rate-day-default" type="number" min="0" step="0.01" />
+            </label>
+            <label>
+              Noturno — 19h–07h (R$/h)
+              <input id="job2-rate-night-default" type="number" min="0" step="0.01" />
+            </label>
+          </form>
+          <form id="job2-discount-form" class="type-prices-form">
+            <label>
+              INSS (%)
+              <input id="job2-inss-percent" type="number" min="0" max="100" step="0.1" />
+            </label>
+            <label>
+              IRRF efetivo (%)
+              <input id="job2-irrf-percent" type="number" min="0" max="100" step="0.1" />
+            </label>
+          </form>
+          <p id="job2-net-factor-hint" class="metric-hint"></p>
+          <p class="metric-hint">Estimativa a partir dos extratos de repasse. O IRRF é progressivo — ajuste se o extrato real mostrar outro valor.</p>
         </details>
       </section>
+      </div>
     </main>
+
+    <!-- ── Modal: configurações (segurança e backup) ───────────────────── -->
+    <div id="security-modal" class="modal-overlay hidden" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="security-title">
+        <div class="modal-head">
+          <h2 id="security-title">Configurações</h2>
+          <button id="close-security-modal" class="ghost" type="button">Fechar</button>
+        </div>
+        <h3 class="security-sub">Segurança e backup</h3>
+        <p id="security-status" class="security-status">Consultando…</p>
+        <p id="security-last" class="metric-hint"></p>
+        <p class="metric-hint">O sistema guarda automaticamente uma cópia dos seus dados na primeira gravação de cada dia, antes de atualizar. Nada precisa ser feito aqui.</p>
+      </div>
+    </div>
 
     <!-- ── Modal: editar plantão do Emprego 2 ───────────────────────────── -->
     <div id="job2-edit-modal" class="modal-overlay hidden" aria-hidden="true">
