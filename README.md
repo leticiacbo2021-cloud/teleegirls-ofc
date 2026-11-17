@@ -76,3 +76,10 @@ desenvolvimento, mas se tiver problema de login local, remova
 temporariamente `Secure;` das duas funções `makeCookie`/`clearCookie` em
 `netlify/functions/api.js` só para testar localmente (não remova em
 produção).
+
+## Navegação (Atendimentos | Escala | Agenda | Emprego 2)
+O menu superior só mostra/oculta áreas que já existem na mesma página (nada é
+duplicado). A área de Atendimentos não teve lógica alterada. A Agenda mostra
+plantões (Escala/atendimentos), Emprego 2 e compromissos próprios; o Emprego 2
+guarda horas e valores. Em **Configurações → Segurança e backup** aparece a data
+do último backup automático (rota somente leitura `GET /api/backup/info`).
