@@ -106,7 +106,7 @@ const state = {
   scheduleSelectedDayKey: null,
   // Mini-calendário de registro do Emprego 2: mês exibido e dia selecionado
   // para o próximo plantão a registrar.
-  job2Cursor: startOfMonth(new Date()),
+  job2Cursor: job2CursorForDay(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`),
   job2SelectedDate: toDayKey(new Date()),
   // Plantões reconhecidos automaticamente a partir de uma foto do extrato,
   // pendentes de revisão antes de virarem registros de verdade.
@@ -635,6 +635,18 @@ function getMonthsWithData() {
 
 // ── Emprego 2 (plantões por hora) ────────────────────────────────────────────
 function getJob2Settings() { return state.data.settings.job2; }
+// Período de apuração: dia 21 de um mês até dia 20 do mês seguinte. A chave
+// "AAAA-MM" identifica o mês em que o período TERMINA (ex.: 21/10 a 20/11 = 2026-11).
+function job2PeriodKey(dayKey) {
+  const [y, m, d] = dayKey.split("-").map(Number);
+  const idx = y * 12 + (m - 1) + (d >= 21 ? 1 : 0);
+  return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, "0")}`;
+}
+// Mês (dia 1) do período que contém a data — usado para posicionar a aba.
+function job2CursorForDay(dayKey) {
+  const [y, m] = job2PeriodKey(dayKey).split("-").map(Number);
+  return new Date(y, m - 1, 1);
+}
 function getJob2Records(dayKey) { return state.data.settings.job2.records[dayKey] || []; }
 
 // Converte data + hora de início/fim em timestamps. Se o fim for menor ou
@@ -738,7 +750,7 @@ function computeJob2MonthMetrics(monthKey) {
   let shifts = 0;
   const records = getJob2Settings().records;
   for (const [dayKey, dayRecords] of Object.entries(records)) {
-    if (!dayKey.startsWith(`${monthKey}-`)) continue;
+    if (job2PeriodKey(dayKey) !== monthKey) continue;
     for (const r of dayRecords) {
       hours += getJob2RecordHours(r);
       gross += getJob2RecordGross(r);
@@ -754,7 +766,7 @@ function getJob2MonthRecordsFlat(monthKey) {
   const out = [];
   const records = getJob2Settings().records;
   for (const [dayKey, dayRecords] of Object.entries(records)) {
-    if (!dayKey.startsWith(`${monthKey}-`)) continue;
+    if (job2PeriodKey(dayKey) !== monthKey) continue;
     for (const r of dayRecords) out.push({ ...r, dayKey });
   }
   out.sort((a, b) => a.startTs - b.startTs);
@@ -1771,7 +1783,7 @@ function setupJob2Controls() {
     if (!dayKey || !startTime || !endTime) return;
     const { startTs, endTs } = job2Timestamps(dayKey, startTime, endTime);
     addJob2Record(dayKey, startTs, endTs, category);
-    state.job2Cursor = startOfMonth(parseDayKey(dayKey));
+    state.job2Cursor = job2CursorForDay(dayKey);
     scheduleSave();
     renderAll();
   });
@@ -1798,7 +1810,13 @@ function renderJob2() {
   document.getElementById("job2-rate-night-default").value = String(job2.nightRate);
 
   const monthKey = monthKeyFromDayKey(toDayKey(state.job2Cursor));
-  document.getElementById("job2-month-label").textContent = formatMonthLong(monthKey);
+  {
+    const [py, pm] = monthKey.split("-").map(Number);
+    const startD = new Date(py, pm - 2, 21);
+    const f = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const label = document.getElementById("job2-month-label");
+    label.innerHTML = `${escapeHtml(formatMonthLong(monthKey))}<small class="job2-period">${f(startD)} – 20/${String(pm).padStart(2, "0")}</small>`;
+  }
   const addDate = document.getElementById("job2-add-date");
   if (!addDate.value) addDate.value = toDayKey(new Date());
   const metrics = computeJob2MonthMetrics(monthKey);
@@ -1877,7 +1895,7 @@ function saveJob2Edit() {
   const { startTs, endTs } = job2Timestamps(newDay, start, end);
   const rec = addJob2Record(newDay, startTs, endTs, category);
   rec.id = cur.id;
-  state.job2Cursor = startOfMonth(parseDayKey(newDay));
+  state.job2Cursor = job2CursorForDay(newDay);
   state.calendarCursor = startOfMonth(parseDayKey(newDay));
   scheduleSave();
   renderAll();
@@ -1925,7 +1943,7 @@ function getAgendaItems(key) {
     const d = new Date(r.startTs);
     items.push({
       kind: "job2", sort: d.getHours() * 60 + d.getMinutes(),
-      text: `Emprego 2 — ${toTimeInputValue(r.startTs)}–${toTimeInputValue(r.endTs)}`,
+      text: `SESA — ${toTimeInputValue(r.startTs)}–${toTimeInputValue(r.endTs)}`,
       onEdit: () => openJob2EditModal(key, r.id),
       onDelete: () => { deleteJob2Record(key, r.id); scheduleSave(); renderAll(); },
     });
@@ -2151,7 +2169,7 @@ function setupAgendaControls() {
       if (!s || !en) return;
       const { startTs, endTs } = job2Timestamps(state.agendaSelected, s, en);
       addJob2Record(state.agendaSelected, startTs, endTs, document.getElementById("agenda-job2-cat").value);
-      state.job2Cursor = startOfMonth(parseDayKey(state.agendaSelected));
+      state.job2Cursor = job2CursorForDay(state.agendaSelected);
       scheduleSave();
       renderAll();
       return;
@@ -2164,10 +2182,167 @@ function setupAgendaControls() {
   document.getElementById("agenda-cancel-edit").addEventListener("click", reset);
 }
 
-// ── Navegação entre áreas (Atendimentos | Escala | Agenda | Emprego 2) ──────
+
+// ── Visão geral: espelho resumido das outras áreas ──────────────────────────
+// Só LÊ o que o sistema já calcula (computeMonthMetrics, computeDayMetrics,
+// getMonthlyGoal, getAgendaPlantaoShifts, getAgendaItems, computeJob2MonthMetrics)
+// e o mesmo estado da Agenda. Não grava nada e não tem cálculo próprio.
+const OV_KIND_CLASS = { plantao: "plantao", job2: "sesa", event: "event" };
+function ovDot(kind) { return `<i class="ov-dot ov-${OV_KIND_CLASS[kind]}"></i>`; }
+function ovShort(dayKey) { return `${dayKey.slice(8, 10)}/${dayKey.slice(5, 7)}`; }
+function renderOverview() {
+  if (!document.getElementById("view-visao")) return;
+  const $ = (id) => document.getElementById(id);
+  const monthKey = monthKeyFromDayKey(toDayKey(state.calendarCursor));
+  $("ov-month").textContent = formatMonthLong(monthKey);
+
+  // Atendimentos (mês) + R$/hora e ticket do dia selecionado (o sistema só calcula esses dois por dia)
+  const monthStats = computeMonthMetrics(monthKey);
+  const dayStats = computeDayMetrics(state.selectedDateKey);
+  $("ov-total").textContent = String(monthStats.total);
+  $("ov-revenue").textContent = formatCurrency(monthStats.revenue);
+  $("ov-rph").textContent = formatRateCurrency(dayStats.grossRevenuePerHour);
+  $("ov-ticket").textContent = formatRateCurrency(dayStats.avgTicket);
+  $("ov-rph-cap").textContent = `dia ${ovShort(state.selectedDateKey)}`;
+  $("ov-ticket-cap").textContent = `dia ${ovShort(state.selectedDateKey)}`;
+
+  // Meta mensal: textos vêm do próprio painel de meta (renderMonthGoal)
+  const goal = getMonthlyGoal(monthKey);
+  const pctMatch = ($("month-goal-progress").textContent || "").match(/([\d.]+)%/);
+  const pct = goal === null ? 0 : pctMatch ? parseFloat(pctMatch[1]) : 0;
+  $("ov-goal-value").textContent = goal === null ? "Não definida" : formatCurrency(goal);
+  $("ov-bar-fill").style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  $("ov-bar-fill").parentElement.setAttribute("aria-valuenow", String(Math.round(pct)));
+  $("ov-goal-pct").textContent = goal === null ? "" : `${Math.round(pct)}%`;
+  $("ov-goal-done").textContent = formatCurrency(monthStats.revenue);
+  $("ov-goal-left").textContent = goal === null ? "—" : $("month-goal-remaining").textContent;
+
+  // Escala: próximos plantões (mesma fonte da Agenda)
+  const escala = $("ov-escala-list");
+  escala.innerHTML = "";
+  const now = new Date();
+  let shown = 0;
+  for (let i = 0; i < 60 && shown < 4; i += 1) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    const key = toDayKey(d);
+    const s = getAgendaPlantaoShifts(key);
+    const shifts = [...s.done, ...s.planned].sort((a, b) => SHIFT_PRICING[a].startMin - SHIFT_PRICING[b].startMin);
+    for (const sh of shifts) {
+      if (shown >= 4) break;
+      const p = SHIFT_PRICING[sh];
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="ov-when">${ovShort(key)}</span><span class="ov-time">${fmtMinutes(p.startMin)} – ${fmtMinutes(p.endMin)}</span><span class="ov-tag">${p.label}</span>`;
+      escala.appendChild(li);
+      shown += 1;
+    }
+  }
+  if (!shown) {
+    const li = document.createElement("li");
+    li.className = "ov-empty";
+    li.textContent = "Nenhum plantão nos próximos dias.";
+    escala.appendChild(li);
+  }
+
+  // SESA (mesmo período do cursor da aba SESA)
+  const jm = computeJob2MonthMetrics(monthKeyFromDayKey(toDayKey(state.job2Cursor)));
+  $("ov-sesa-period").innerHTML = $("job2-month-label").innerHTML;
+  $("ov-sesa-shifts").textContent = String(jm.shifts);
+  $("ov-sesa-hours").textContent = `${jm.hours.toFixed(1).replace(".", ",")}h`;
+  $("ov-sesa-gross").textContent = formatCurrency(jm.gross);
+
+  // Agenda: mesmo estado (agendaView/agendaCursor/agendaSelected) e mesmos itens da aba Agenda
+  const isWeek = state.agendaView === "week";
+  $("ov-view-month").classList.toggle("active", !isWeek);
+  $("ov-view-week").classList.toggle("active", isWeek);
+  $("ov-weekdays").classList.toggle("hidden", isWeek);
+  $("ov-cal-title").textContent = $("agenda-title").textContent;
+  const grid = $("ov-cal-grid");
+  grid.innerHTML = "";
+  grid.classList.toggle("is-week", isWeek);
+  const todayKey = toDayKey(now);
+  const makeCell = (date, m) => {
+    const key = toDayKey(date);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ov-day";
+    if (m !== null && date.getMonth() !== m) btn.classList.add("other-month");
+    if (key === state.agendaSelected) btn.classList.add("selected");
+    if (key === todayKey) btn.classList.add("today");
+    btn.addEventListener("click", () => {
+      state.agendaSelected = key;
+      state.agendaEditingId = null;
+      setView("agenda");
+    });
+    return { btn, key };
+  };
+  if (!isWeek) {
+    const c = state.agendaCursor;
+    const m = c.getMonth();
+    const first = new Date(c.getFullYear(), m, 1);
+    const start = new Date(c.getFullYear(), m, 1 - ((first.getDay() + 6) % 7));
+    for (let i = 0; i < 42; i += 1) {
+      const date = new Date(start);
+      date.setDate(start.getDate() + i);
+      const { btn, key } = makeCell(date, m);
+      const kinds = new Set(getAgendaItems(key).map((it) => it.kind));
+      const dots = ["plantao", "job2", "event"].filter((k) => kinds.has(k)).map(ovDot).join("");
+      btn.innerHTML = `<span class="ov-num">${date.getDate()}</span><span class="ov-dots">${dots}</span>`;
+      grid.appendChild(btn);
+    }
+  } else {
+    const start = startOfWeek(parseDayKey(state.agendaSelected));
+    for (let i = 0; i < 7; i += 1) {
+      const date = new Date(start);
+      date.setDate(start.getDate() + i);
+      const { btn, key } = makeCell(date, null);
+      const items = getAgendaItems(key);
+      const wd = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+      btn.innerHTML = `<span class="ov-week-day"><b>${date.getDate()}</b> ${escapeHtml(wd)}</span>
+        <span class="ov-week-items">${items.length ? items.map((it) => `<span>${ovDot(it.kind)}${escapeHtml(it.text)}</span>`).join("") : '<span class="ov-empty">—</span>'}</span>`;
+      grid.appendChild(btn);
+    }
+  }
+
+  // Próximos compromissos (mesma regra do "Próximos" da Agenda)
+  const next = $("ov-next-list");
+  next.innerHTML = "";
+  let days = 0;
+  for (let i = 0; i < 21 && days < 4; i += 1) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    const key = toDayKey(d);
+    const items = getAgendaItems(key);
+    if (!items.length) continue;
+    const wd = d.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+    const label = i === 0 ? "Hoje" : i === 1 ? "Amanhã" : wd;
+    const li = document.createElement("li");
+    li.innerHTML = `<b>${escapeHtml(label)} <em>${ovShort(key)}</em></b>` +
+      items.slice(0, 3).map((it) => `<span>${ovDot(it.kind)}${escapeHtml(it.text)}</span>`).join("");
+    next.appendChild(li);
+    days += 1;
+  }
+  if (!days) {
+    const li = document.createElement("li");
+    li.className = "ov-empty";
+    li.textContent = "Nada nos próximos dias.";
+    next.appendChild(li);
+  }
+}
+function setupOverview() {
+  const $ = (id) => document.getElementById(id);
+  // Reaproveita os controles da Agenda: o estado e a navegação são os mesmos.
+  const via = (id) => () => { $(id).click(); renderOverview(); };
+  $("ov-cal-prev").addEventListener("click", via("agenda-prev"));
+  $("ov-cal-next").addEventListener("click", via("agenda-next"));
+  $("ov-view-month").addEventListener("click", via("agenda-view-month"));
+  $("ov-view-week").addEventListener("click", via("agenda-view-week"));
+  $("ov-go-escala").addEventListener("click", () => setView("escala"));
+  $("ov-go-sesa").addEventListener("click", () => setView("emprego2"));
+}
+
+// ── Navegação entre áreas (Atendimentos | Visão geral | Escala | Agenda | SESA) ──────
 // Só mostra/oculta seções que já existem na página: nada é duplicado e o
 // estado (dados, cronômetro, formulários) continua o mesmo.
-const APP_VIEWS = ["atendimentos", "escala", "agenda", "emprego2"];
+const APP_VIEWS = ["atendimentos", "visao", "escala", "agenda", "emprego2"];
 function setView(name, { push = true } = {}) {
   if (!APP_VIEWS.includes(name)) name = "atendimentos";
   document.querySelectorAll(".app-view").forEach((el) => el.classList.toggle("hidden", el.dataset.view !== name));
@@ -2236,6 +2411,7 @@ function renderAll() {
   renderAtestadoSummary();
   renderAgenda();
   renderJob2();
+  renderOverview();
   renderCharts(metrics);
   const prices = getTypePrices();
   document.getElementById("price-adulto").value = String(prices.adulto);
@@ -2604,6 +2780,7 @@ async function initApp() {
   setupScheduleControls();
   setupJob2Controls();
   setupAgendaControls();
+  setupOverview();
   setupSecurityModal();
   setupNav();
   bindEvents();
