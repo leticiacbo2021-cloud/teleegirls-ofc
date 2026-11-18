@@ -1114,3 +1114,13 @@ input, select, textarea { color: var(--text); }
 
 /* SESA: divisão diurno/noturno do plantão que cruza 19h */
 .job2-split { display: block; margin-top: 0.15rem; font-size: 0.72rem; }
+
+/* ── Ajustes: tamanho geral menor e barra de abas sem setinhas ── */
+html { font-size: 87.5%; } /* ~14px: tudo em rem encolhe ~12%. Aumente para 93.75% se ficar pequeno */
+
+.main-nav {
+  overflow-y: hidden;          /* remove a barra vertical (setinhas ▲ ● ▼) */
+  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;
+}
+.main-nav::-webkit-scrollbar { display: none; } /* Chrome/Edge/Safari */
