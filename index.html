@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
@@ -121,9 +121,10 @@
       <nav class="main-nav" id="main-nav" aria-label="Áreas do painel">
         <span class="main-nav-brand">Minha rotina</span>
         <button type="button" class="main-nav-btn active" data-view="atendimentos">Atendimentos</button>
+        <button type="button" class="main-nav-btn" data-view="visao">Visão geral</button>
         <button type="button" class="main-nav-btn" data-view="escala">Escala</button>
         <button type="button" class="main-nav-btn" data-view="agenda">Agenda</button>
-        <button type="button" class="main-nav-btn" data-view="emprego2">Emprego 2</button>
+        <button type="button" class="main-nav-btn" data-view="emprego2">SESA</button>
       </nav>
 
       <div id="view-atendimentos" class="app-view" data-view="atendimentos">
@@ -357,6 +358,97 @@
 
 
       </div>
+      <div id="view-visao" class="app-view hidden" data-view="visao">
+        <div class="ov">
+          <header class="ov-head">
+            <div>
+              <h2 class="ov-title">Visão geral</h2>
+              <p class="ov-sub">Panorama da sua rotina, atendimentos e plantões</p>
+            </div>
+            <p id="ov-month" class="ov-month"></p>
+          </header>
+
+          <section class="ov-card ov-atend">
+            <div class="ov-atend-main">
+              <h3 class="ov-card-title">Atendimentos</h3>
+              <div class="ov-stats">
+                <div><p class="ov-label">Total de atendimentos</p><p id="ov-total" class="ov-value"></p><p class="ov-cap">no mês</p></div>
+                <div><p class="ov-label">Faturamento</p><p id="ov-revenue" class="ov-value"></p><p class="ov-cap">no mês</p></div>
+                <div><p class="ov-label">R$/hora</p><p id="ov-rph" class="ov-value"></p><p id="ov-rph-cap" class="ov-cap"></p></div>
+                <div><p class="ov-label">Ticket médio</p><p id="ov-ticket" class="ov-value"></p><p id="ov-ticket-cap" class="ov-cap"></p></div>
+              </div>
+            </div>
+            <div class="ov-goal">
+              <p class="ov-label">Meta mensal</p>
+              <p id="ov-goal-value" class="ov-goal-value"></p>
+              <div class="ov-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span id="ov-bar-fill"></span></div>
+              <p id="ov-goal-pct" class="ov-goal-pct"></p>
+              <p class="ov-goal-line"><span>Realizado</span><b id="ov-goal-done"></b></p>
+              <p class="ov-goal-line"><span>Falta</span><b id="ov-goal-left"></b></p>
+            </div>
+          </section>
+
+          <div class="ov-col ov-col-left">
+          <section class="ov-card ov-escala">
+            <div class="ov-card-head">
+              <h3 class="ov-card-title">Escala</h3>
+              <button id="ov-go-escala" class="ov-link" type="button" aria-label="Abrir a Escala">Ver escala →</button>
+            </div>
+            <ul id="ov-escala-list" class="ov-list"></ul>
+          </section>
+
+          <section class="ov-card ov-sesa">
+            <div class="ov-card-head">
+              <h3 class="ov-card-title">SESA</h3>
+              <button id="ov-go-sesa" class="ov-link" type="button" aria-label="Abrir o SESA">Ver detalhes →</button>
+            </div>
+            <p id="ov-sesa-period" class="ov-period"></p>
+            <div class="ov-sesa-stats">
+              <div><p id="ov-sesa-shifts" class="ov-value"></p><p class="ov-label">Plantões</p></div>
+              <div><p id="ov-sesa-hours" class="ov-value"></p><p class="ov-label">Horas</p></div>
+              <div><p id="ov-sesa-gross" class="ov-value"></p><p class="ov-label">Bruto</p></div>
+            </div>
+          </section>
+
+          </div>
+
+          <section class="ov-card ov-agenda">
+            <div class="ov-card-head">
+              <div>
+                <h3 class="ov-card-title">Agenda</h3>
+                <p class="ov-card-sub">Compromissos, plantões e rotinas</p>
+              </div>
+              <div class="ov-toggle">
+                <button id="ov-view-month" class="ov-toggle-btn" type="button">Mês</button>
+                <button id="ov-view-week" class="ov-toggle-btn" type="button">Semana</button>
+              </div>
+            </div>
+            <div class="ov-cal-nav">
+              <button id="ov-cal-prev" class="ov-arrow" type="button" aria-label="Anterior">‹</button>
+              <p id="ov-cal-title"></p>
+              <button id="ov-cal-next" class="ov-arrow" type="button" aria-label="Próximo">›</button>
+            </div>
+            <div id="ov-weekdays" class="ov-weekdays"><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span></div>
+            <div id="ov-cal-grid" class="ov-cal-grid"></div>
+          </section>
+
+          <div class="ov-col ov-col-right">
+          <section class="ov-side ov-next">
+            <h3 class="ov-card-title">Próximos compromissos</h3>
+            <ul id="ov-next-list" class="ov-next-list"></ul>
+          </section>
+
+          <section class="ov-side ov-legend">
+            <h3 class="ov-card-title">Legenda</h3>
+            <ul class="ov-legend-list">
+              <li><i class="ov-dot ov-plantao"></i>Plantão</li>
+              <li><i class="ov-dot ov-sesa"></i>SESA</li>
+              <li><i class="ov-dot ov-event"></i>Compromisso</li>
+            </ul>
+          </section>
+          </div>
+        </div>
+      </div>
       <div id="view-escala" class="app-view hidden" data-view="escala">
       <section class="card schedule-card">
         <div class="card-head">
@@ -391,7 +483,7 @@
           </div>
         </div>
         <p class="metric-hint agenda-legend">
-          <span>🩺 Plantão</span><span>💼 Emprego 2</span><span>💕 Compromisso</span>
+          <span>🩺 Plantão</span><span>💼 SESA</span><span>💕 Compromisso</span>
         </p>
         <div class="agenda-layout">
           <div class="agenda-cal-col">
@@ -418,7 +510,7 @@
           <form id="agenda-form" class="agenda-form">
             <select id="agenda-kind" aria-label="Tipo">
               <option value="event">Compromisso</option>
-              <option value="job2">Plantão Emprego 2</option>
+              <option value="job2">Plantão SESA</option>
             </select>
             <input id="agenda-input-title" type="text" maxlength="80" placeholder="Novo compromisso" required />
             <input id="agenda-input-time" type="time" aria-label="Hora (opcional)" />
@@ -440,7 +532,7 @@
       <div id="view-emprego2" class="app-view hidden" data-view="emprego2">
       <section class="card job2-card">
         <div class="card-head">
-          <h2>Emprego 2</h2>
+          <h2>SESA</h2>
           <div class="job2-month-nav">
             <button id="job2-month-prev" class="ghost" type="button" aria-label="Mês anterior">◀</button>
             <h3 id="job2-month-label" class="job2-month-title"></h3>
@@ -548,7 +640,7 @@
     <div id="job2-edit-modal" class="modal-overlay hidden" aria-hidden="true">
       <div class="modal-card" role="dialog" aria-modal="true">
         <div class="modal-head">
-          <h2>Editar plantão (Emprego 2)</h2>
+          <h2>Editar plantão (SESA)</h2>
           <button id="close-job2-edit-modal" class="ghost" type="button">Fechar</button>
         </div>
         <form id="job2-edit-form" class="manual-form">
