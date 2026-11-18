@@ -1111,3 +1111,6 @@ input, select, textarea { color: var(--text); }
 @media (max-width: 560px) {
   .main-nav-btn { flex: 1 1 auto; white-space: nowrap; font-size: 0.56rem; padding: 0.75rem 0.3rem; letter-spacing: 0; }
 }
+
+/* SESA: divisão diurno/noturno do plantão que cruza 19h */
+.job2-split { display: block; margin-top: 0.15rem; font-size: 0.72rem; }
