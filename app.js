@@ -635,11 +635,12 @@ function getMonthsWithData() {
 
 // ── Emprego 2 (plantões por hora) ────────────────────────────────────────────
 function getJob2Settings() { return state.data.settings.job2; }
-// Período de apuração: dia 21 de um mês até dia 20 do mês seguinte. A chave
-// "AAAA-MM" identifica o mês em que o período TERMINA (ex.: 21/10 a 20/11 = 2026-11).
+// Período de apuração: dia 21 de um mês até dia 20 do mês seguinte, pago no mês
+// depois do fim do período. A chave "AAAA-MM" é o mês de RECEBIMENTO
+// (ex.: 21/09 a 20/10 é recebido em novembro = 2026-11).
 function job2PeriodKey(dayKey) {
   const [y, m, d] = dayKey.split("-").map(Number);
-  const idx = y * 12 + (m - 1) + (d >= 21 ? 1 : 0);
+  const idx = y * 12 + (m - 1) + (d >= 21 ? 2 : 1);
   return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, "0")}`;
 }
 // Mês (dia 1) do período que contém a data — usado para posicionar a aba.
@@ -1812,10 +1813,11 @@ function renderJob2() {
   const monthKey = monthKeyFromDayKey(toDayKey(state.job2Cursor));
   {
     const [py, pm] = monthKey.split("-").map(Number);
-    const startD = new Date(py, pm - 2, 21);
+    const startD = new Date(py, pm - 3, 21);
+    const endD = new Date(py, pm - 2, 20);
     const f = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
     const label = document.getElementById("job2-month-label");
-    label.innerHTML = `${escapeHtml(formatMonthLong(monthKey))}<small class="job2-period">${f(startD)} – 20/${String(pm).padStart(2, "0")}</small>`;
+    label.innerHTML = `${escapeHtml(formatMonthLong(monthKey))}<small class="job2-period">${f(startD)} – ${f(endD)}</small>`;
   }
   const addDate = document.getElementById("job2-add-date");
   if (!addDate.value) addDate.value = toDayKey(new Date());
@@ -1840,10 +1842,16 @@ function renderJob2() {
     const [yy, mm, dd] = record.dayKey.split("-");
     const wd = WEEKDAY_SHORT[parseDayKey(record.dayKey).getDay()];
     const category = record.category === "prep" ? "prep" : "generalista";
+    // Plantão que cruza 07:00/19:00 (ex.: 17–23h): mostra a divisão usada no cálculo.
+    const split = computeDayNightHours(record.startTs, record.endTs);
+    const fmtH = (n) => `${n.toFixed(1).replace(".", ",")}h`;
+    const splitHint = split.dayHours > 0 && split.nightHours > 0
+      ? `<small class="metric-hint job2-split">${fmtH(split.dayHours)} diurno + ${fmtH(split.nightHours)} noturno</small>`
+      : "";
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${dd}/${mm} <small class="metric-hint">${wd}</small></td>
-      <td>${toTimeInputValue(record.startTs)}–${toTimeInputValue(record.endTs)} <span class="tag job2-category ${category}">${JOB2_CATEGORY_META[category]}</span></td>
+      <td>${toTimeInputValue(record.startTs)}–${toTimeInputValue(record.endTs)} <span class="tag job2-category ${category}">${JOB2_CATEGORY_META[category]}</span>${splitHint}</td>
       <td>${hours.toFixed(1).replace(".", ",")}h</td>
       <td><strong>${formatCurrency(gross)}</strong></td>
       <td class="job2-row-actions"></td>`;
